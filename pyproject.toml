@@ -1,0 +1,23 @@
+[project]
+name = "causalgeo"
+version = "0.0.1"
+description = "Estimand-first geo incrementality: holdout, heavy-up, leftover overlay, dose on delivered exposure."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Aditya Puttaparthi Tirumala" }]
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "statsmodels>=0.14",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
