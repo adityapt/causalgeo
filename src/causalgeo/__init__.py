@@ -1,3 +1,32 @@
-"""causalgeo: estimand-first geo incrementality."""
+"""causalgeo: geo incrementality experiments (holdback, go-dark, heavy-up)."""
+
+from causalgeo.assignment import AssignmentMap
+from causalgeo.estimate import LiftReport
+from causalgeo.exceptions import (
+    CausalGeoError,
+    MissingControlError,
+    MissingSpendError,
+    MixedRoleError,
+    OverlapError,
+)
+from causalgeo.experiment import GeoExperiment, GeoLiftExperiment
+from causalgeo.interventions import HEAVY_UP, HOLDBACK, GO_DARK, Intervention
 
 __version__ = "0.0.1"
+
+__all__ = [
+    "AssignmentMap",
+    "CausalGeoError",
+    "GeoExperiment",
+    "GeoLiftExperiment",
+    "GO_DARK",
+    "HEAVY_UP",
+    "HOLDBACK",
+    "Intervention",
+    "LiftReport",
+    "MissingControlError",
+    "MissingSpendError",
+    "MixedRoleError",
+    "OverlapError",
+    "__version__",
+]

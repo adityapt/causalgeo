@@ -1,7 +1,7 @@
 [project]
 name = "causalgeo"
 version = "0.0.1"
-description = "Estimand-first geo incrementality: holdout, heavy-up, leftover overlay, dose on delivered exposure."
+description = "Geo experiment analysis: go-dark, holdback, and heavy-up lift (ATT, percent lift, iCPD)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
