@@ -69,12 +69,7 @@ def estimate_att(
 ) -> LiftReport:
     """Y ~ treated + geo FE + date FE, cluster-robust SEs by geo."""
     work = panel[[conversions, location, date, treatment_term]].dropna()
-    extra = []
-    if spend_col and spend_col in panel.columns:
-        work = work.join(panel[spend_col])
-        extra.append(spend_col)
-    cols = [conversions, treatment_term, *extra]
-    demeaned = _twoway_demean(work, location, date, cols)
+    demeaned = _twoway_demean(work, location, date, [conversions, treatment_term])
     y = demeaned[conversions]
     x = demeaned[[treatment_term]]
     x = x.loc[:, x.std() > 1e-12]

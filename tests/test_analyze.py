@@ -11,6 +11,7 @@ from causalgeo import (
     GeoExperiment,
     Intervention,
     MissingControlError,
+    MissingSpendError,
     OverlapError,
 )
 
@@ -45,12 +46,25 @@ def test_go_dark_recovers_att():
     true = -4.0
     data, t0 = _kpi_panel(true, treat, ctrl)
     assignment = AssignmentMap.from_sets(treat, ctrl)
-    report = GeoExperiment(data, assignment, t0).analyze(Intervention.GO_DARK)
+    report = GeoExperiment(data, assignment, t0, spend="spend").analyze(Intervention.GO_DARK)
     assert report.lift == pytest.approx(true, abs=0.3)
     assert report.n_treatment_geos == 8
     assert report.n_control_geos == 8
     assert report.cov_type == "cluster"
-    assert report.icpd is not None
+    # Go-dark: treatment spend falls, conversions fall, so iCPD is positive.
+    assert report.spend_delta == pytest.approx(-10.0, abs=0.01)
+    assert report.icpd == pytest.approx(true / -10.0, abs=0.05)
+
+
+def test_icpd_requires_spend_series():
+    treat = [f"G{i}" for i in range(4)]
+    ctrl = [f"C{i}" for i in range(4)]
+    data, t0 = _kpi_panel(-2.0, treat, ctrl)
+    assignment = AssignmentMap.from_sets(treat, ctrl)
+    exp = GeoExperiment(data, assignment, t0)  # no spend column
+    assert exp.analyze(Intervention.GO_DARK).icpd is None
+    with pytest.raises(MissingSpendError):
+        exp.analyze(Intervention.GO_DARK, require_icpd=True)
 
 
 def test_assignment_from_long_frame_unique_geos():
