@@ -123,16 +123,30 @@ class AssignmentMap:
         location: str = "location",
         role: str = "role",
         universe: Optional[Iterable[object]] = None,
+        cell_col: Optional[str] = None,
+        cell: Optional[object] = None,
     ) -> "AssignmentMap":
         """Build from a long assignment table (one row per geo × cell × role).
 
         Duplicate geos across cells are collapsed to unique locations.
         ``role`` accepts GeoX/GeoLift-style labels: treatment, test, holdout,
         go_dark, holdback, heavy_up, control, bau, donor.
+
+        In a multi-cell matrix the same geo is often treated in one cell and a
+        control donor in another. That is a valid design but not a single
+        contrast, so pass ``cell_col`` and ``cell`` to analyze one cell at a
+        time; otherwise the conflicting roles raise ``MixedRoleError``.
         """
         if location not in frame.columns or role not in frame.columns:
             raise ValueError(f"Assignment needs columns {location!r} and {role!r}")
-        work = frame[[location, role]].copy()
+        work = frame.copy()
+        if cell is not None:
+            if cell_col is None or cell_col not in work.columns:
+                raise ValueError(f"Assignment needs column {cell_col!r} to select a cell")
+            work = work.loc[work[cell_col].astype(str) == str(cell)]
+            if work.empty:
+                raise EmptyAssignmentError(f"No assignment rows for cell {cell!r}")
+        work = work[[location, role]].copy()
         work[location] = work[location].astype(str)
         work["_role"] = work[role].map(_norm_role)
         treat = set()
@@ -147,4 +161,11 @@ class AssignmentMap:
                 unknown.add(r)
         if unknown:
             raise ValueError(f"Unknown role values: {sorted(unknown)}")
+        conflict = treat & ctrl
+        if conflict and cell is None:
+            raise MixedRoleError(
+                "Geos hold both treatment and control roles across cells: "
+                f"{sorted(conflict)[:10]}. Pass cell_col= and cell= to analyze "
+                "one contrast at a time."
+            )
         return cls.from_sets(treat, ctrl, universe=universe)

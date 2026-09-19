@@ -51,8 +51,14 @@ def build_panel(
             raise ValueError(f"Impressions column {impressions!r} not in data")
         panel["_impressions"] = pd.to_numeric(panel[impressions], errors="coerce")
         pre = panel.loc[panel["is_post"] == 0]
+        if pre.empty:
+            raise ValueError(
+                "Delivered-impression dose needs pretest rows before treatment_start"
+            )
         baseline = pre.groupby(location)["_impressions"].mean()
-        panel["_dose_ratio"] = panel[location].map(baseline)
-        panel["_dose_ratio"] = panel["_impressions"] / panel["_dose_ratio"]
+        # A geo with no pretest delivery has no baseline to scale against, so
+        # dose is undefined rather than infinite.
+        baseline = baseline.where(baseline > 0)
+        panel["_dose_ratio"] = panel["_impressions"] / panel[location].map(baseline)
         panel["did_dose"] = panel["is_post"] * (panel["_dose_ratio"] - 1.0)
     return panel.sort_values([location, date]).reset_index(drop=True)

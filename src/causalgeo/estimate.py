@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -16,7 +17,8 @@ class LiftReport:
     ``lift`` is the ATT of the intervention on the conversion KPI (per geo-day).
     ``percent_lift`` is lift relative to mean control conversions in the test
     period. ``icpd`` is incremental conversions per dollar when spend is
-    present (iROAS if ``conversions`` are revenue).
+    present (iROAS if ``conversions`` are revenue); its denominator is
+    ``spend_delta``, the difference-in-differences of spend.
     """
 
     lift: float
@@ -58,6 +60,31 @@ def _twoway_demean(
     return frame[columns] - entity_means - time_means + grand
 
 
+def _incremental_spend(panel: pd.DataFrame, spend_col: Optional[str]) -> Optional[float]:
+    """Difference-in-differences of spend, per geo-day.
+
+    The iCPD denominator has to be the spend *caused by the intervention*:
+    ``(treatment post - treatment pre) - (control post - control pre)``.
+    A plain post-period gap between groups would also pick up any baseline
+    spend imbalance between treatment and control geos.
+    """
+    if not spend_col or spend_col not in panel.columns:
+        return None
+    cells = {}
+    for treat in (0, 1):
+        for post in (0, 1):
+            series = panel.loc[
+                (panel["is_treatment"] == treat) & (panel["is_post"] == post), spend_col
+            ]
+            if series.empty:
+                return None
+            cells[(treat, post)] = float(series.mean())
+    delta = (cells[(1, 1)] - cells[(1, 0)]) - (cells[(0, 1)] - cells[(0, 0)])
+    if math.isnan(delta):
+        return None
+    return delta
+
+
 def estimate_att(
     panel: pd.DataFrame,
     *,
@@ -86,17 +113,12 @@ def estimate_att(
     pval = float(fitted.pvalues[term])
     ci = fitted.conf_int().loc[term]
     ctrl_post = panel.loc[(panel["is_treatment"] == 0) & (panel["is_post"] == 1), conversions]
-    base = float(ctrl_post.mean()) if len(ctrl_post) else float("nan")
-    pct = att / base if base not in (0, float("nan")) else float("nan")
+    base = float(ctrl_post.mean()) if len(ctrl_post) else math.nan
+    pct = att / base if base and not math.isnan(base) else math.nan
+    spend_delta = _incremental_spend(panel, spend_col)
     icpd = None
-    spend_delta = None
-    if spend_col and spend_col in panel.columns:
-        t_post = panel.loc[(panel["is_treatment"] == 1) & (panel["is_post"] == 1), spend_col]
-        c_post = panel.loc[(panel["is_treatment"] == 0) & (panel["is_post"] == 1), spend_col]
-        if len(t_post) and len(c_post) and float(c_post.mean()) != float(t_post.mean()):
-            spend_delta = float(t_post.mean() - c_post.mean())
-            if abs(spend_delta) > 1e-12:
-                icpd = att / spend_delta
+    if spend_delta is not None and abs(spend_delta) > 1e-12:
+        icpd = att / spend_delta
     return LiftReport(
         lift=att,
         std_error=se,

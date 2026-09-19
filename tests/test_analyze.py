@@ -12,11 +12,19 @@ from causalgeo import (
     Intervention,
     MissingControlError,
     MissingSpendError,
+    MixedRoleError,
     OverlapError,
 )
 
 
-def _kpi_panel(true_att: float, treatment_geos, control_geos, seed: int = 1):
+def _kpi_panel(
+    true_att: float,
+    treatment_geos,
+    control_geos,
+    seed: int = 1,
+    treatment_base_spend: float = 10.0,
+    control_base_spend: float = 10.0,
+):
     rng = np.random.default_rng(seed)
     start = datetime(2026, 1, 1)
     dates = [start + timedelta(days=i) for i in range(40)]
@@ -25,10 +33,11 @@ def _kpi_panel(true_att: float, treatment_geos, control_geos, seed: int = 1):
     for geo in list(treatment_geos) + list(control_geos):
         fe = rng.normal(20, 2)
         is_t = geo in set(treatment_geos)
+        base_spend = treatment_base_spend if is_t else control_base_spend
         for t, day in enumerate(dates):
             post = int(day >= treat_start)
             y = fe + 0.1 * t + true_att * is_t * post + rng.normal(0, 0.35)
-            spend = 10.0 * (0 if (is_t and post) else 1)
+            spend = base_spend * (0 if (is_t and post) else 1)
             rows.append(
                 {
                     "location": geo,
@@ -65,6 +74,39 @@ def test_icpd_requires_spend_series():
     assert exp.analyze(Intervention.GO_DARK).icpd is None
     with pytest.raises(MissingSpendError):
         exp.analyze(Intervention.GO_DARK, require_icpd=True)
+
+
+def test_icpd_denominator_ignores_baseline_spend_imbalance():
+    """Treatment geos spend 30/day at baseline, controls 10, and go dark.
+
+    Incremental spend is -30 (the DiD), not the -10 post-period group gap.
+    """
+    treat = [f"G{i}" for i in range(6)]
+    ctrl = [f"C{i}" for i in range(6)]
+    true = -4.0
+    data, t0 = _kpi_panel(
+        true, treat, ctrl, treatment_base_spend=30.0, control_base_spend=10.0
+    )
+    report = GeoExperiment(
+        data, AssignmentMap.from_sets(treat, ctrl), t0, spend="spend"
+    ).analyze(Intervention.GO_DARK)
+    assert report.spend_delta == pytest.approx(-30.0, abs=0.01)
+    assert report.icpd == pytest.approx(report.lift / -30.0, abs=0.05)
+
+
+def test_multi_cell_roles_need_a_cell_contrast():
+    frame = pd.DataFrame(
+        {
+            "location": ["A", "A", "B", "C"],
+            "role": ["holdout", "control", "control", "holdout"],
+            "cell": [1, 2, 1, 2],
+        }
+    )
+    with pytest.raises(MixedRoleError):
+        AssignmentMap.from_frame(frame)
+    cell1 = AssignmentMap.from_frame(frame, cell_col="cell", cell=1)
+    assert cell1.treatment_geos == frozenset({"A"})
+    assert cell1.control_geos == frozenset({"B"})
 
 
 def test_assignment_from_long_frame_unique_geos():

@@ -9,7 +9,7 @@ from causalgeo.exceptions import (
     MixedRoleError,
     OverlapError,
 )
-from causalgeo.experiment import GeoExperiment, GeoLiftExperiment
+from causalgeo.experiment import GeoExperiment
 from causalgeo.interventions import HEAVY_UP, HOLDBACK, GO_DARK, Intervention
 
 __version__ = "0.0.1"
@@ -18,7 +18,6 @@ __all__ = [
     "AssignmentMap",
     "CausalGeoError",
     "GeoExperiment",
-    "GeoLiftExperiment",
     "GO_DARK",
     "HEAVY_UP",
     "HOLDBACK",

@@ -102,8 +102,3 @@ class GeoExperiment:
             treatment_term=term,
             spend_col=spend_col,
         )
-
-
-# GeoLift-style alias
-class GeoLiftExperiment(GeoExperiment):
-    """Alias for users coming from GeoLift naming."""
