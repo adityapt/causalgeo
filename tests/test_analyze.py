@@ -59,10 +59,27 @@ def test_go_dark_recovers_att():
     assert report.lift == pytest.approx(true, abs=0.3)
     assert report.n_treatment_geos == 8
     assert report.n_control_geos == 8
-    assert report.cov_type == "cluster"
+    assert report.method == "tbr"
+    assert report.cov_type == "tbr"
+    assert report.pre_r2 is not None
     # Go-dark: treatment spend falls, conversions fall, so iCPD is positive.
     assert report.spend_delta == pytest.approx(-10.0, abs=0.01)
     assert report.icpd == pytest.approx(true / -10.0, abs=0.05)
+
+
+def test_twfe_and_sc_recover_the_same_att():
+    treat = [f"G{i}" for i in range(8)]
+    ctrl = [f"C{i}" for i in range(8)]
+    true = -4.0
+    data, t0 = _kpi_panel(true, treat, ctrl)
+    exp = GeoExperiment(data, AssignmentMap.from_sets(treat, ctrl), t0, spend="spend")
+    twfe = exp.analyze(Intervention.GO_DARK, counterfactual="twfe")
+    sc = exp.analyze(Intervention.GO_DARK, counterfactual="sc")
+    assert twfe.method == "twfe"
+    assert twfe.cov_type == "cluster"
+    assert twfe.lift == pytest.approx(true, abs=0.3)
+    assert sc.method == "sc"
+    assert sc.lift == pytest.approx(true, abs=0.5)
 
 
 def test_icpd_requires_spend_series():
@@ -139,3 +156,12 @@ def test_overlay_cannot_use_existing_control_geos():
         base.assert_overlay_allowed(overlay)
     ok = AssignmentMap.from_sets(["U1"], base.unassigned_geos - {"U1"})
     base.assert_overlay_allowed(ok)
+
+
+def test_unknown_counterfactual_is_rejected():
+    treat = [f"G{i}" for i in range(4)]
+    ctrl = [f"C{i}" for i in range(4)]
+    data, t0 = _kpi_panel(-2.0, treat, ctrl)
+    exp = GeoExperiment(data, AssignmentMap.from_sets(treat, ctrl), t0)
+    with pytest.raises(ValueError, match="counterfactual"):
+        exp.analyze(Intervention.GO_DARK, counterfactual="ols")

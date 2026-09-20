@@ -2,7 +2,7 @@
 
 Python library for **geo experiments** — incrementality tests on geographic units (geos / locations), in the same setting as [GeoLift](https://facebookincubator.github.io/GeoLift/) and [Meridian GeoX](https://developers.google.com/meridian/geox).
 
-You supply **treatment geos**, **control geos**, and a **pretest / test** conversion series. `analyze()` estimates **lift** (ATT), **percent lift**, and **iCPD** (incremental conversions per dollar; **iROAS** if the KPI is revenue).
+You supply **treatment geos**, **control geos**, and a **pretest / test** conversion series. `analyze()` estimates **lift** (ATT), **percent lift**, and **iCPD**. Measurement default is **time-based regression** (the pretest path), with synthetic control and clustered TWFE as options.
 
 ## Intervention types (GeoX)
 
@@ -21,7 +21,7 @@ GeoLift and GeoX both **design the experiment and then analyze the design they p
 | | GeoLift | Meridian GeoX | causalgeo |
 |---|---|---|---|
 | Starting point | Pick test markets | Search designs (strata, MDE, budget) | **Assignment you were handed** |
-| Counterfactual | Synthetic control (ASCM / GSC) | Time-based regression | Two-way fixed effects, clustered by geo |
+| Counterfactual | Synthetic control (ASCM / GSC) | Time-based regression | **TBR (default)**, synthetic control, or clustered TWFE |
 | Treatment variable | Treated / not | `budget_pct` on **planned spend** | Treated / not **or delivered-impression dose** |
 | Overlapping cell lists | Not modeled | Not modeled | Collapsed to unique geos; role conflicts caught; unassigned pool exposed |
 | Concurrent tests | Assumes isolation | Requires isolation | `assert_overlay_allowed` blocks collisions |
@@ -37,12 +37,12 @@ Three things it does that the others do not:
 
 It also refuses to produce numbers that look like incrementality but are not: no control group raises `MissingControlError`, and iCPD without a spend series raises `MissingSpendError` rather than dividing by the wrong denominator. When spend is present, the denominator is the **difference-in-differences of spend**, so a treatment group that was already spending more than control at baseline does not inflate the per-dollar number.
 
-**Use GeoLift or GeoX instead when** you are designing a single-channel test from scratch and want market selection, power curves, and synthetic-control or TBR counterfactuals. `causalgeo` does not do design search, and does not try to.
+**Use GeoLift or GeoX instead when** you are **designing** a single-channel test from scratch and want market selection, power curves, and budget search. `causalgeo` does not do design search. For **analysis of an assignment you already have**, TBR / SC / TWFE plus overlap rules are in this package.
 
 ## Design vs analysis
 
 * **Assignment** — which locations are treatment vs control (GeoLift: test vs control markets; GeoX: geo assignment). Overlapping cell-level lists are collapsed to unique geos, and a geo holding both roles across cells is analyzed one cell at a time. Geos in the **universe** that are in neither group are **unassigned** (available for a separate heavy-up, not for the first test’s counterfactual).
-* **Analyze** — two-way fixed effects on conversions: geo FE + date FE, standard errors clustered by geo. Optional regressor: **delivered impressions** relative to pretest (dose), not planned spend.
+* **Analyze** — default **TBR**: pretest fit of treated-geo mean on control-geo mean, then the test-period gap. `counterfactual="sc"` fits nonnegative donor weights on the pretest path. `counterfactual="twfe"` is geo FE + date FE with SEs clustered by geo. Optional regressor for heavy-up: **delivered impressions** relative to pretest (TWFE-only).
 
 Market selection / power search (GeoLift `GeoLiftMarketSelection`, GeoX design engine) is out of scope for v0.
 
@@ -54,8 +54,11 @@ Market selection / power search (GeoLift `GeoLiftMarketSelection`, GeoX design e
 | Pretest period | Before `treatment_start` |
 | Test period | On and after `treatment_start` |
 | Lift / ATT | Effect of the intervention on conversions, per geo-day |
+| TBR | Pretest regression of treated mean on control mean; test gap is lift |
+| SC | Weighted control geos matched to the treated pretest path |
 | Percent lift | Lift ÷ mean control conversions in the test period |
 | iCPD / iROAS | Lift ÷ **incremental** spend, where incremental spend is the DiD of spend |
+| Hedges’ *g* | Standardized mean difference of **geo-level** pretest means (Cohen’s *d* with small-sample correction) |
 | BAU | Business-as-usual spend in control |
 
 ## Example
@@ -74,8 +77,21 @@ exp = GeoExperiment(
     treatment_end="2026-10-31",
     spend="spend",
 )
-report = exp.analyze(Intervention.GO_DARK)
-print(report.lift, report.percent_lift, report.icpd)
+report = exp.analyze(Intervention.GO_DARK)  # TBR by default
+print(report.lift, report.percent_lift, report.icpd, report.pre_r2)
+twfe = exp.analyze(Intervention.GO_DARK, counterfactual="twfe")
+sc = exp.analyze(Intervention.GO_DARK, counterfactual="sc")
+
+from causalgeo import MetricSpec
+
+diag = exp.diagnose(
+    [
+        MetricSpec("conversions", kind="continuous", primary=True),
+        MetricSpec("close_rate", kind="rate", successes="closes", trials="leads"),
+    ]
+)
+print(diag.balance, diag.gates, diag.power)
+# Contingency / χ² tables are association checks, not lift.
 ```
 
 Heavy-up on **unassigned** geos only:
@@ -84,6 +100,18 @@ Heavy-up on **unassigned** geos only:
 overlay = AssignmentMap.from_sets(heavy_up_geos, overlay_control_geos)
 assignment.assert_overlay_allowed(overlay)  # no overlap with existing test/control
 ```
+
+## Does the estimator return garbage?
+
+A single synthetic recovery can look right by luck. `python -m causalgeo.simulate` runs a Monte Carlo on the DGP TWFE is identified for (geo FE + common time shocks + constant ATT, AR(1) errors within geo):
+
+| Check | What “not garbage” looks like |
+|---|---|
+| A/A (`ATT = 0`) | Bias near 0; clustered 95% CIs cover ~95%; reject rate ~5% |
+| Planted go-dark ATT | Bias near 0; clustered CIs cover the planted value |
+| iid SEs (same point estimate) | Coverage well below 95% when days are serially correlated |
+
+CI tests in `tests/test_simulate.py` fail if those gates break. This does **not** validate misspecified designs (no parallel trends, contamination, concurrent cells).
 
 ## Install
 

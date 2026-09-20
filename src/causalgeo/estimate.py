@@ -34,6 +34,8 @@ class LiftReport:
     icpd: Optional[float] = None
     spend_delta: Optional[float] = None
     treatment_term: str = "treated"
+    method: str = "twfe"
+    pre_r2: Optional[float] = None
 
     def summary_frame(self) -> pd.DataFrame:
         row = {
@@ -44,6 +46,8 @@ class LiftReport:
             "ci_upper": self.ci_upper,
             "percent_lift": self.percent_lift,
             "icpd": self.icpd,
+            "method": self.method,
+            "pre_r2": self.pre_r2,
         }
         return pd.DataFrame([row])
 
@@ -133,4 +137,5 @@ def estimate_att(
         icpd=icpd,
         spend_delta=spend_delta,
         treatment_term=term,
+        method="twfe",
     )
