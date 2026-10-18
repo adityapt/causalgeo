@@ -1,8 +1,31 @@
 # causalgeo
 
-Python library for **geo experiments** — incrementality tests on geographic units (geos / locations), in the same setting as [GeoLift](https://facebookincubator.github.io/GeoLift/) and [Meridian GeoX](https://developers.google.com/meridian/geox).
+Python library for **geo experiments**. Two jobs:
 
-You supply **treatment geos**, **control geos**, and a **pretest / test** conversion series. `analyze()` estimates **lift** (ATT), **percent lift**, and **iCPD**. Measurement default is **time-based regression** (the pretest path), with synthetic control and clustered TWFE as options.
+1. **One cell you were handed.** `analyze()` estimates lift from treatment geos, control geos, and a pretest/test series. The default is time-based regression. Synthetic control and clustered two-way fixed effects are options.
+2. **Several cells in the same weeks, each turning off a bundle of channels.** `design_concurrent_test` assigns markets. `disentangle` estimates each bundle from the holdout flag, adjusts that estimate when a channel that was supposed to stay on shifted in the dark markets, and splits the bundle totals into channel slopes. A channel whose impressions are a copy of another channel stays combined. Daily impact is exposure times the channel slope.
+
+```python
+from causalgeo import design_concurrent_test, disentangle
+
+design = design_concurrent_test(
+    markets,  # geo, stratum
+    channels=["Facebook", "TikTok", "Search"],
+    bundles=[["Facebook", "TikTok"], ["Facebook", "Search"], ["TikTok", "Search"]],
+    control_share=0.5,
+)
+result = disentangle(
+    design,
+    outcomes,      # geo, date, sales
+    impressions,   # geo, date, channel, impressions
+    outcome="sales",
+    treatment_start="2026-08-03",
+)
+```
+
+`result.channels` is one row per channel. `result.bundles` is the measured bundle effect next to the effect implied by the channel slopes. `result.exposure` says whether a still-on channel was adjusted for. `result.daily` is the daily channel impact.
+
+The single-cell path is unchanged. You supply treatment geos, control geos, and a pretest/test conversion series. `analyze()` returns lift, percent lift, and iCPD. The setting is the same as [GeoLift](https://facebookincubator.github.io/GeoLift/) and [Meridian GeoX](https://developers.google.com/meridian/geox).
 
 ## Intervention types (GeoX)
 
@@ -44,29 +67,7 @@ It also refuses to produce numbers that look like incrementality but are not: no
 * **Assignment** — which locations are treatment vs control (GeoLift: test vs control markets; GeoX: geo assignment). Overlapping cell-level lists are collapsed to unique geos, and a geo holding both roles across cells is analyzed one cell at a time. Geos in the **universe** that are in neither group are **unassigned** (available for a separate heavy-up, not for the first test’s counterfactual).
 * **Analyze** — default **TBR**: pretest fit of treated-geo mean on control-geo mean, then the test-period gap. `counterfactual="sc"` fits nonnegative donor weights on the pretest path. `counterfactual="twfe"` is geo FE + date FE with SEs clustered by geo. Optional regressor for heavy-up: **delivered impressions** relative to pretest (TWFE-only).
 
-Market selection / power search (GeoLift `GeoLiftMarketSelection`, GeoX design engine) is out of scope for v0.
-
-## Concurrent bundles
-
-When several cells run in the same weeks and each cell turns off a bundle, `disentangle` estimates the bundle from the holdout flag, adjusts that estimate when a channel that was supposed to stay on shifted in the dark markets, and splits the bundle totals into channel slopes. A channel whose impressions are a copy of another channel stays combined. Daily impact is exposure times the channel slope.
-
-```python
-from causalgeo import design_concurrent_test, disentangle
-
-design = design_concurrent_test(
-    markets,  # geo, stratum
-    channels=["Facebook", "TikTok", "Search"],
-    bundles=[["Facebook", "TikTok"], ["Facebook", "Search"], ["TikTok", "Search"]],
-    control_share=0.5,
-)
-result = disentangle(
-    design,
-    outcomes,      # geo, date, sales
-    impressions,   # geo, date, channel, impressions
-    outcome="sales",
-    treatment_start="2026-08-03",
-)
-```
+Market selection / power search (GeoLift `GeoLiftMarketSelection`, GeoX design engine) is out of scope. The concurrent design above assigns markets within strata. It does not search for the lowest minimum detectable effect.
 
 ## Vocabulary
 
