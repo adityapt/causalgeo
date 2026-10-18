@@ -46,6 +46,28 @@ It also refuses to produce numbers that look like incrementality but are not: no
 
 Market selection / power search (GeoLift `GeoLiftMarketSelection`, GeoX design engine) is out of scope for v0.
 
+## Concurrent bundles
+
+When several cells run in the same weeks and each cell turns off a bundle, `disentangle` estimates the bundle from the holdout flag, adjusts that estimate when a channel that was supposed to stay on shifted in the dark markets, and splits the bundle totals into channel slopes. A channel whose impressions are a copy of another channel stays combined. Daily impact is exposure times the channel slope.
+
+```python
+from causalgeo import design_concurrent_test, disentangle
+
+design = design_concurrent_test(
+    markets,  # geo, stratum
+    channels=["Facebook", "TikTok", "Search"],
+    bundles=[["Facebook", "TikTok"], ["Facebook", "Search"], ["TikTok", "Search"]],
+    control_share=0.5,
+)
+result = disentangle(
+    design,
+    outcomes,      # geo, date, sales
+    impressions,   # geo, date, channel, impressions
+    outcome="sales",
+    treatment_start="2026-08-03",
+)
+```
+
 ## Vocabulary
 
 | Term | Meaning |

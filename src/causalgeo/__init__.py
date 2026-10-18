@@ -1,6 +1,8 @@
 """causalgeo: geo incrementality experiments (holdback, go-dark, heavy-up)."""
 
 from causalgeo.assignment import AssignmentMap
+from causalgeo.calibrated import disentangle
+from causalgeo.design import design_concurrent_test
 from causalgeo.diagnostics import DiagnosticsReport, diagnose
 from causalgeo.estimate import LiftReport
 from causalgeo.exceptions import (
@@ -31,24 +33,8 @@ __all__ = [
     "MissingSpendError",
     "MixedRoleError",
     "OverlapError",
+    "design_concurrent_test",
     "diagnose",
-    "__version__",
-]
-
-__version__ = "0.0.1"
-
-__all__ = [
-    "AssignmentMap",
-    "CausalGeoError",
-    "GeoExperiment",
-    "GO_DARK",
-    "HEAVY_UP",
-    "HOLDBACK",
-    "Intervention",
-    "LiftReport",
-    "MissingControlError",
-    "MissingSpendError",
-    "MixedRoleError",
-    "OverlapError",
+    "disentangle",
     "__version__",
 ]
