@@ -12,8 +12,9 @@ from causalgeo.estimate import LiftReport, estimate_att
 from causalgeo.exceptions import MissingSpendError
 from causalgeo.interventions import Intervention
 from causalgeo.panel import build_panel
+from causalgeo.sdid import estimate_sdid
 
-_COUNTERFACTUALS = frozenset({"tbr", "twfe", "sc"})
+_COUNTERFACTUALS = frozenset({"sdid", "tbr", "twfe", "sc"})
 
 
 class GeoExperiment:
@@ -63,12 +64,15 @@ class GeoExperiment:
         use_impressions_as_dose: bool = False,
         require_icpd: bool = False,
         counterfactual: str = "tbr",
+        sdid_placebo_replications: int = 200,
+        random_state: Optional[int] = 0,
     ) -> LiftReport:
         """Estimate lift for the stated intervention.
 
         ``intervention`` uses GeoX names: ``go_dark``, ``holdback``, ``heavy_up``.
         ``counterfactual`` is the measurement: ``tbr`` (default; pretest path),
-        ``sc`` (synthetic control on the treated mean), or ``twfe`` (geo + date FE).
+        ``sc`` (synthetic control on the treated mean), ``sdid`` (synthetic
+        difference-in-differences), or ``twfe`` (geo + date FE).
 
         If ``impressions`` were provided and ``use_impressions_as_dose`` is True,
         the regressor is delivered-impression dose relative to pretest (heavy-up
@@ -126,6 +130,16 @@ class GeoExperiment:
                 date=self.date,
                 spend_col=spend_col,
             )
+        if method == "sdid":
+            return estimate_sdid(
+                panel,
+                conversions=self.conversions,
+                location=self.location,
+                date=self.date,
+                spend_col=spend_col,
+                placebo_replications=sdid_placebo_replications,
+                random_state=random_state,
+            )
         return estimate_att(
             panel,
             conversions=self.conversions,
@@ -133,6 +147,41 @@ class GeoExperiment:
             date=self.date,
             treatment_term="treated",
             spend_col=spend_col,
+        )
+
+    def placebo(
+        self,
+        *,
+        location: object,
+        counterfactual: str = "sdid",
+        sdid_placebo_replications: int = 200,
+        random_state: Optional[int] = 0,
+    ) -> LiftReport:
+        """Fake-treat one donor geo to test the measurement procedure.
+
+        Original treated geos are excluded: a placebo counterfactual must be
+        built only from geos that were untreated in the real experiment.
+        """
+        placebo_geo = str(location)
+        if placebo_geo not in self.assignment.control_geos:
+            raise ValueError("placebo location must be one of the control geos")
+        donors = self.assignment.control_geos - {placebo_geo}
+        placebo_assignment = AssignmentMap.from_sets([placebo_geo], donors)
+        placebo_experiment = GeoExperiment(
+            self.data,
+            placebo_assignment,
+            self.treatment_start,
+            self.treatment_end,
+            location=self.location,
+            date=self.date,
+            conversions=self.conversions,
+            spend=self.spend,
+            impressions=self.impressions,
+        )
+        return placebo_experiment.analyze(
+            counterfactual=counterfactual,
+            sdid_placebo_replications=sdid_placebo_replications,
+            random_state=random_state,
         )
 
 

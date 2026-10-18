@@ -167,6 +167,132 @@ def run_monte_carlo(
     )
 
 
+@dataclass(frozen=True)
+class IntervalCoverage:
+    """Bias and 95% interval coverage for one estimator and design."""
+
+    n_sims: int
+    bias: float
+    coverage: float
+    mean_se: float
+    empirical_sd: float
+
+
+def run_tbr_coverage(
+    n_sims: int = 80,
+    *,
+    att: float = -4.0,
+    seed: int = 0,
+    n_pre: int = 21,
+    n_post: int = 14,
+    n_treatment: int = 8,
+    n_control: int = 8,
+) -> IntervalCoverage:
+    """Coverage of HAC time-based-regression intervals on the package DGP."""
+    rng = np.random.default_rng(seed)
+    from causalgeo.counterfactual import estimate_tbr
+
+    lifts = []
+    errors = []
+    covered = []
+    for _ in range(n_sims):
+        data, start = simulate_panel(
+            rng,
+            att=att,
+            n_pre=n_pre,
+            n_post=n_post,
+            n_treatment=n_treatment,
+            n_control=n_control,
+        )
+        treat = sorted(geo for geo in data["location"].unique() if str(geo).startswith("T"))
+        ctrl = sorted(geo for geo in data["location"].unique() if str(geo).startswith("C"))
+        panel = build_panel(data, AssignmentMap.from_sets(treat, ctrl), treatment_start=start)
+        report = estimate_tbr(panel)
+        lifts.append(report.lift)
+        errors.append(report.std_error)
+        covered.append(report.ci_lower <= att <= report.ci_upper)
+    estimates = np.asarray(lifts, dtype=float)
+    return IntervalCoverage(
+        n_sims=n_sims,
+        bias=float(estimates.mean() - att),
+        coverage=float(np.mean(covered)),
+        mean_se=float(np.mean(errors)),
+        empirical_sd=float(estimates.std(ddof=1)),
+    )
+
+
+def run_sdid_coverage(
+    n_sims: int = 40,
+    *,
+    att: float = 0.0,
+    seed: int = 0,
+    n_control: int = 4,
+    n_pre: int = 6,
+    n_post: int = 6,
+    placebo_replications: int = 40,
+) -> IntervalCoverage:
+    """Coverage of sDiD placebo intervals when the treated geo is exchangeable."""
+    rng = np.random.default_rng(seed)
+    from causalgeo.sdid import estimate_sdid
+
+    lifts = []
+    errors = []
+    covered = []
+    for draw in range(n_sims):
+        n_days = n_pre + n_post
+        shock = 0.0
+        common = np.empty(n_days)
+        for day in range(n_days):
+            shock = 0.6 * shock + float(rng.normal(0, 1))
+            common[day] = shock
+        rows = []
+        start = datetime(2026, 1, 1)
+        for geo in range(n_control):
+            level = float(rng.normal(20, 2))
+            for day in range(n_days):
+                rows.append(
+                    {
+                        "location": f"C{geo}",
+                        "date": start + timedelta(days=day),
+                        "conversions": level + common[day] + float(rng.normal(0, 0.3)),
+                        "is_treatment": 0,
+                        "is_post": int(day >= n_pre),
+                    }
+                )
+        level = float(rng.normal(20, 2))
+        for day in range(n_days):
+            rows.append(
+                {
+                    "location": "T0",
+                    "date": start + timedelta(days=day),
+                    "conversions": (
+                        level
+                        + common[day]
+                        + float(rng.normal(0, 0.3))
+                        + (att if day >= n_pre else 0.0)
+                    ),
+                    "is_treatment": 1,
+                    "is_post": int(day >= n_pre),
+                }
+            )
+        report = estimate_sdid(
+            pd.DataFrame(rows),
+            placebo_replications=placebo_replications,
+            random_state=draw,
+        )
+        lifts.append(report.lift)
+        errors.append(report.std_error)
+        covered.append(report.ci_lower <= att <= report.ci_upper)
+    estimates = np.asarray(lifts, dtype=float)
+    return IntervalCoverage(
+        n_sims=n_sims,
+        bias=float(estimates.mean() - att),
+        coverage=float(np.mean(covered)),
+        mean_se=float(np.mean(errors)),
+        empirical_sd=float(estimates.std(ddof=1)),
+    )
+
+
 def main() -> None:
     print("A/A (true ATT = 0), 200 draws")
     aa = run_monte_carlo(n_sims=200, att=0.0)

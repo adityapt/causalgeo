@@ -1,0 +1,28 @@
+{
+  "treatment_start": "2023-10-02",
+  "n_geos": 40,
+  "n_weeks": 156,
+  "cell_counts": {
+    "1": 8,
+    "2": 8,
+    "3": 8,
+    "control": 16
+  },
+  "max_abs_pct_error": 0.20746152395504616,
+  "adjustments": [
+    {
+      "cell": "1",
+      "channel": "Channel2",
+      "impression_shift": 120947.87232142859,
+      "sales_shift": 70.16777773636443,
+      "share": 0.126269738975263
+    },
+    {
+      "cell": "2",
+      "channel": "Channel1",
+      "impression_shift": -118115.42276785715,
+      "sales_shift": -83.23323022653052,
+      "share": 0.2617196509859741
+    }
+  ]
+}

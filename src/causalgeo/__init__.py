@@ -13,16 +13,18 @@ from causalgeo.exceptions import (
     OverlapError,
 )
 from causalgeo.experiment import GeoExperiment
+from causalgeo.grid import GridIdentification, identify_grid
 from causalgeo.interventions import HEAVY_UP, HOLDBACK, GO_DARK, Intervention
 from causalgeo.metrics import MetricSpec
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "AssignmentMap",
     "CausalGeoError",
     "DiagnosticsReport",
     "GeoExperiment",
+    "GridIdentification",
     "GO_DARK",
     "HEAVY_UP",
     "HOLDBACK",
@@ -36,5 +38,6 @@ __all__ = [
     "design_concurrent_test",
     "diagnose",
     "disentangle",
+    "identify_grid",
     "__version__",
 ]

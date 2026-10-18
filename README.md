@@ -2,8 +2,8 @@
 
 Python library for **geo experiments**. Two jobs:
 
-1. **One cell you were handed.** `analyze()` estimates lift from treatment geos, control geos, and a pretest/test series. The default is time-based regression. Synthetic control and clustered two-way fixed effects are options.
-2. **Several cells in the same weeks, each turning off a bundle of channels.** `design_concurrent_test` assigns markets. `disentangle` estimates each bundle from the holdout flag, adjusts that estimate when a channel that was supposed to stay on shifted in the dark markets, and splits the bundle totals into channel slopes. A channel whose impressions are a copy of another channel stays combined. Daily impact is exposure times the channel slope.
+1. **One cell you were handed.** `analyze()` estimates lift from treatment geos, control geos, and a pretest/test series. The default is time-based regression. Synthetic difference-in-differences, synthetic control, and clustered two-way fixed effects are options.
+2. **Several cells in the same weeks, each turning off a bundle of channels.** `design_concurrent_test` assigns markets. `disentangle` estimates each bundle from the holdout flag, adjusts that estimate when a channel that was supposed to stay on shifted in the dark markets, and splits the bundle totals into channel slopes with a soft calibration. The bundle table reports the gap that remains. A channel whose impressions are a copy of another channel is not given a slope; the shared path stays in the fit as one control. Daily impact is exposure times the channel slope.
 
 ```python
 from causalgeo import design_concurrent_test, disentangle
@@ -65,9 +65,56 @@ It also refuses to produce numbers that look like incrementality but are not: no
 ## Design vs analysis
 
 * **Assignment** — which locations are treatment vs control (GeoLift: test vs control markets; GeoX: geo assignment). Overlapping cell-level lists are collapsed to unique geos, and a geo holding both roles across cells is analyzed one cell at a time. Geos in the **universe** that are in neither group are **unassigned** (available for a separate heavy-up, not for the first test’s counterfactual).
-* **Analyze** — default **TBR**: pretest fit of treated-geo mean on control-geo mean, then the test-period gap. `counterfactual="sc"` fits nonnegative donor weights on the pretest path. `counterfactual="twfe"` is geo FE + date FE with SEs clustered by geo. Optional regressor for heavy-up: **delivered impressions** relative to pretest (TWFE-only).
+* **Analyze** — default **TBR**: pretest fit of treated-geo mean on control-geo mean, then the test-period gap, with **Newey–West (HAC) standard errors** so serial correlation in the residual does not shrink p-values. `counterfactual="sdid"` combines nonnegative donor and pre-period weights and uses control-geo placebo inference. `counterfactual="sc"` fits nonnegative donor weights on the pretest path. `counterfactual="twfe"` is geo FE + date FE with SEs clustered by geo. Optional regressor for heavy-up: **delivered impressions** relative to pretest (TWFE-only).
 
 Market selection / power search (GeoLift `GeoLiftMarketSelection`, GeoX design engine) is out of scope. The concurrent design above assigns markets within strata. It does not search for the lowest minimum detectable effect.
+
+### Synthetic DiD and placebo validation
+
+```python
+report = exp.analyze(
+    counterfactual="sdid",
+    sdid_placebo_replications=200,
+    random_state=0,
+)
+
+# Pretend an untreated donor was treated on the same date.
+placebo = exp.placebo(
+    location="control_geo_1",
+    counterfactual="sdid",
+    sdid_placebo_replications=200,
+    random_state=0,
+)
+```
+
+sDiD v1 supports a single common treatment start. Placebo uncertainty follows
+Arkhangelsky et al.'s control-only reassignment method and works with one
+treated geo. `examples/prop99_measure.py` reproduces the published Proposition
+99 result (about −15.6 packs per capita) and checks a fake-treated Nebraska.
+
+## Concurrent-intervention identification
+
+Before fitting outcomes, `identify_grid()` checks whether a cell-by-channel
+dose matrix can separate the requested effects:
+
+```python
+from causalgeo import identify_grid
+
+report = identify_grid(dose)  # columns: cell, channel, dose
+report.rank
+report.alias_groups
+report.channel_status
+```
+
+Full column rank means each channel is separately identified by the design.
+When channels always move together, the report names the bundle that can be
+estimated instead of inventing channel-specific effects.
+
+`examples/prop99_grid_identification.py` downloads the published Proposition
+99 cigarette-sales panel used by the Synthetic Interventions benchmark. It
+shows that tax increases and anti-tobacco programs are separable when policy
+type is recorded (rank 2 of 2), but become one aliased bundle when both are
+collapsed to a generic policy indicator (rank 1 of 2).
 
 ## Vocabulary
 
@@ -142,4 +189,9 @@ CI tests in `tests/test_simulate.py` fail if those gates break. This does **not*
 pip install -e ".[dev]"
 ```
 
-Private repository while the API is unstable.
+The manuscript example also needs matplotlib:
+
+```bash
+pip install -e ".[dev,paper]"
+make check
+```

@@ -19,6 +19,30 @@ from scipy.optimize import minimize
 from causalgeo.estimate import LiftReport, _incremental_spend
 
 
+def _hac_lags(n: int) -> int:
+    """Newey–West lag count: ``floor(4 (n/100)^{2/9})``, at least 1, at most n-2."""
+    if n <= 3:
+        return 1
+    lags = int(math.floor(4.0 * (n / 100.0) ** (2.0 / 9.0)))
+    return int(max(1, min(lags, n - 2)))
+
+
+def _newey_west_lrv(resid: np.ndarray, maxlags: int) -> float:
+    """Long-run variance of a mean-zero series (Bartlett kernel)."""
+    e = np.asarray(resid, dtype=float)
+    n = len(e)
+    if n < 2:
+        return float(np.var(e)) if n else 0.0
+    gamma0 = float(np.dot(e, e) / n)
+    lrv = gamma0
+    l_use = int(max(1, min(maxlags, n - 1)))
+    for lag in range(1, l_use + 1):
+        gamma = float(np.dot(e[lag:], e[:-lag]) / n)
+        weight = 1.0 - lag / (l_use + 1)
+        lrv += 2.0 * weight * gamma
+    return max(lrv, 0.0)
+
+
 def _daily_means(
     panel: pd.DataFrame,
     conversions: str,
@@ -91,12 +115,22 @@ def estimate_tbr(
     location: str = "location",
     date: str = "date",
     spend_col: Optional[str] = None,
+    se: str = "hac",
+    maxlags: Optional[int] = None,
 ) -> LiftReport:
     """GeoX-style time-based regression on daily treatment vs control means.
 
     Pretest: ``mean(Y | treated geos) = a + b * mean(Y | control geos)``.
-    Test period lift is the average gap vs that fitted path.
+    Test period lift is the average post-period gap vs that fitted path.
+
+    ``se="hac"`` (default) uses Newey–West standard errors for the
+    counterfactual path and for the post-period mean residual. Weekly and
+    daily geo series are serially correlated; iid residual variance
+    understates the SE. Pass ``se="iid"`` only to reproduce the older formula.
     """
+    method = se.strip().lower()
+    if method not in {"hac", "iid"}:
+        raise ValueError("se must be 'hac' or 'iid'")
     series = _daily_means(panel, conversions, date)
     pre = series.loc[series["is_post"] == 0]
     post = series.loc[series["is_post"] == 1]
@@ -112,21 +146,43 @@ def estimate_tbr(
     b = float(fitted.params["y_ctrl"])
     xbar_post = float(post["y_ctrl"].mean())
     att = float(post["y_treat"].mean() - a - b * xbar_post)
-    cov = fitted.cov_params().loc[["const", "y_ctrl"], ["const", "y_ctrl"]].to_numpy(dtype=float)
+    lags = _hac_lags(len(pre)) if maxlags is None else int(maxlags)
+    lags = max(1, min(lags, max(len(pre) - 2, 1)))
+    ols_cov = float(fitted.scale) * np.asarray(fitted.normalized_cov_params, dtype=float)
+    if method == "hac":
+        hac = fitted.get_robustcov_results(cov_type="HAC", maxlags=lags)
+        cov = np.asarray(hac.cov_params(), dtype=float)
+        resid_lrv = _newey_west_lrv(np.asarray(fitted.resid, dtype=float), lags)
+        cov_label = "hac"
+    else:
+        cov = ols_cov
+        resid_lrv = float(fitted.scale)
+        cov_label = "iid"
     grad = np.array([1.0, xbar_post])
-    var_cf = float(grad @ cov @ grad)
-    var_avg = float(fitted.scale) / len(post)
-    se = math.sqrt(max(var_cf + var_avg, 0.0))
+    # Small pretest samples make HAC covariance too small. Keep the larger of
+    # the HAC and OLS parameter variances, and do not let the residual
+    # long-run variance fall below the OLS residual variance.
+    var_cf = max(float(grad @ cov @ grad), float(grad @ ols_cov @ grad))
+    var_avg = max(resid_lrv, float(fitted.scale)) / len(post)
+    ctrl = np.asarray(pre["y_ctrl"], dtype=float)
+    ctrl_centered = ctrl - float(ctrl.mean())
+    if method == "hac":
+        ctrl_lrv = _newey_west_lrv(ctrl_centered, lags)
+    else:
+        ctrl_lrv = float(np.dot(ctrl_centered, ctrl_centered) / max(len(ctrl_centered) - 1, 1))
+    ctrl_lrv = max(ctrl_lrv, float(np.var(ctrl, ddof=1)))
+    var_ctrl = (b ** 2) * ctrl_lrv / len(post)
+    se_hat = math.sqrt(max(var_cf + var_avg + var_ctrl, 0.0))
     return _finish(
         att,
-        se,
+        se_hat,
         df=float(fitted.df_resid),
         panel=panel,
         conversions=conversions,
         location=location,
         spend_col=spend_col,
         nobs=int(len(series)),
-        cov_type="tbr",
+        cov_type=cov_label,
         method="tbr",
         treatment_term="tbr_gap",
         pre_r2=float(fitted.rsquared),

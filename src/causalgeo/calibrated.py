@@ -2,9 +2,11 @@
 
 The geo test supplies the combined effect of each bundle. A linear mix model
 explains sales with channel impressions, market effects, and day effects.
-Each bundle result is a calibration equation: the channel effects inside that
-bundle have to add up to the measured combined effect. A channel gets its own
-number only when its impressions are not a copy of another channel's.
+Each bundle result is one weighted calibration row. The weight pulls the
+channel slopes toward the measured total. It does not force them to match it.
+A channel gets its own number only when its impressions are not a copy of
+another channel's. Copied channels stay in the fit as one shared control, and
+neither of them is given a slope.
 """
 
 from __future__ import annotations
@@ -21,12 +23,13 @@ from causalgeo.identified import IdentifiedEstimate, estimate_identified
 
 @dataclass(frozen=True)
 class ChannelModel:
-    """Channel effects that add back to the measured bundle effects."""
+    """Channel slopes from a soft calibration to the measured bundle effects."""
 
     channels: pd.DataFrame
     bundles: pd.DataFrame
     daily: pd.DataFrame
     exposure: pd.DataFrame
+    cells: pd.DataFrame
 
 
 def disentangle(
@@ -80,6 +83,7 @@ def disentangle(
         bundles=model.bundles,
         daily=model.daily,
         exposure=exposure,
+        cells=identified.cells,
     )
 
 
@@ -96,7 +100,7 @@ def fit_channel_model(
     impression_col: str = "impressions",
     decay: float = 0.0,
 ) -> ChannelModel:
-    """Fit channel effects so each bundle's channels add up to its measured effect."""
+    """Fit channel effects softly calibrated to each measured bundle effect."""
     if not 0 <= decay < 1:
         raise ValueError("decay must be between 0 and 1, not including 1")
     transformed = _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay)
@@ -108,10 +112,10 @@ def fit_channel_model(
     obs_x, obs_y = _observational_block(
         outcomes, wide, design, outcome, geo_col, date_col, channels, treatment_start
     )
-    beta, se, identified_mask = _fit_weighted(
+    beta, se, identified_mask, tied = _fit_weighted(
         obs_x, obs_y, identified, withheld, channels
     )
-    channel_table = _channel_table(channels, beta, se, identified_mask)
+    channel_table = _channel_table(channels, beta, se, identified_mask, tied)
     bundle_table = _bundle_table(identified, withheld, channels, beta, identified_mask)
     daily = _daily(wide, channels, beta, identified_mask, geo_col, date_col)
     return ChannelModel(
@@ -119,6 +123,7 @@ def fit_channel_model(
         bundles=bundle_table,
         daily=daily,
         exposure=pd.DataFrame(),
+        cells=identified.cells,
     )
 
 
@@ -165,24 +170,35 @@ def _withheld(wide, design, channels, geo_col, date_col, treatment_start) -> pd.
     frame = wide.copy()
     frame["cell"] = frame[geo_col].map(assignment)
     post = frame[date_col] >= pd.Timestamp(treatment_start)
-    control = frame.loc[post & (frame["cell"] == "control"), channels]
-    if control.empty:
+    control_post = frame.loc[post & (frame["cell"] == "control"), channels]
+    control_pre = frame.loc[~post & (frame["cell"] == "control"), channels]
+    if control_post.empty:
         raise ValueError("the test window has no control markets")
-    control_mean = control.mean()
+    if control_pre.empty:
+        raise ValueError("the pre-test window has no control markets")
+    control_change = control_post.mean() - control_pre.mean()
     rows = []
     bundles = _bundles(design)
     for cell, label in bundles.items():
-        dark = frame.loc[post & (frame["cell"] == cell), channels]
-        if dark.empty:
+        dark_post = frame.loc[post & (frame["cell"] == cell), channels]
+        dark_pre = frame.loc[~post & (frame["cell"] == cell), channels]
+        if dark_post.empty:
             continue
-        gap = control_mean - dark.mean()
+        if dark_pre.empty:
+            raise ValueError(f"the pre-test window has no markets for cell {cell}")
+        lost = control_change - (dark_post.mean() - dark_pre.mean())
+        off_channels = set(label.split("+")) if label else set()
         for channel in channels:
             rows.append(
                 {
                     "cell": cell,
                     "bundle": label,
                     "channel": channel,
-                    "withheld": float(max(gap[channel], 0.0)),
+                    "withheld": (
+                        float(max(lost[channel], 0.0))
+                        if channel in off_channels
+                        else 0.0
+                    ),
                 }
             )
     if not rows:
@@ -250,20 +266,29 @@ def _fit_weighted(obs_x, obs_y, identified, withheld, channels):
     x = np.vstack(x_rows)
     y = np.concatenate(y_rows)
     w = np.concatenate(w_rows)
-    keep = _unique_channels(x * np.sqrt(w)[:, None])
+    report, used, tied = _select_columns(
+        x * np.sqrt(w)[:, None],
+        channels,
+        copy_x=obs_x,
+    )
     beta = np.full(len(channels), np.nan)
     se_hat = np.full(len(channels), np.nan)
-    if not keep.any():
-        return beta, se_hat, keep
-    x_keep = x[:, keep]
+    if not used.any():
+        return beta, se_hat, report, tied
+    x_used = x[:, used]
     sw = np.sqrt(w)
-    xtwx = (x_keep * sw[:, None]).T @ (x_keep * sw[:, None])
-    xtwy = (x_keep * sw[:, None]).T @ (y * sw)
+    xtwx = (x_used * sw[:, None]).T @ (x_used * sw[:, None])
+    xtwy = (x_used * sw[:, None]).T @ (y * sw)
     fitted = np.linalg.lstsq(xtwx, xtwy, rcond=1e-8)[0]
     cov = np.linalg.pinv(xtwx, rcond=1e-8)
-    beta[keep] = fitted
-    se_hat[keep] = np.sqrt(np.clip(np.diag(cov), 0, None))
-    return beta, se_hat, keep
+    se_used = np.sqrt(np.clip(np.diag(cov), 0, None))
+    cursor = 0
+    for index in np.flatnonzero(used):
+        if report[index]:
+            beta[index] = fitted[cursor]
+            se_hat[index] = se_used[cursor]
+        cursor += 1
+    return beta, se_hat, report, tied
 
 
 def _observational_variance(obs_x, obs_y) -> float:
@@ -275,47 +300,97 @@ def _observational_variance(obs_x, obs_y) -> float:
     return float(max(resid @ resid / dof, 1e-8))
 
 
-def _unique_channels(weighted_x: np.ndarray) -> np.ndarray:
-    """Keep a channel only when its column is not a copy of another channel."""
+def _select_columns(
+    weighted_x: np.ndarray,
+    channels: list[str],
+    copy_x: np.ndarray | None = None,
+):
+    """Choose reported slopes, and one control column for each copied pair.
+
+    A copied pair cannot be split. Dropping both columns lets their sales leak
+    into every channel that remains. One column of the pair stays in the
+    regression as a shared control. Neither member is given its own slope.
+    """
     count = weighted_x.shape[1]
-    keep = np.zeros(count, dtype=bool)
+    report = np.zeros(count, dtype=bool)
+    used = np.zeros(count, dtype=bool)
+    tied: dict[str, list[str]] = {}
     if weighted_x.size == 0 or np.allclose(weighted_x, 0):
-        return keep
+        return report, used, tied
     norms = np.linalg.norm(weighted_x, axis=0)
     scale = max(float(norms.max()), 1e-12)
-    alive = norms > 1e-8 * scale
-    copies = np.zeros(count, dtype=bool)
-    indexes = np.flatnonzero(alive)
-    for left, first in enumerate(indexes):
-        for second in indexes[left + 1 :]:
-            cosine = float(np.dot(weighted_x[:, first], weighted_x[:, second]) / (norms[first] * norms[second]))
+    alive = list(np.flatnonzero(norms > 1e-8 * scale))
+    parent = {index: index for index in alive}
+    copy_x = weighted_x if copy_x is None else copy_x
+    copy_norms = np.linalg.norm(copy_x, axis=0)
+    copy_scale = max(float(copy_norms.max()), 1e-12)
+    copy_alive = set(np.flatnonzero(copy_norms > 1e-8 * copy_scale))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    for left, first in enumerate(alive):
+        for second in alive[left + 1 :]:
+            if first in copy_alive and second in copy_alive:
+                cosine = float(
+                    np.dot(copy_x[:, first], copy_x[:, second])
+                    / (copy_norms[first] * copy_norms[second])
+                )
+            elif first not in copy_alive and second not in copy_alive:
+                cosine = float(
+                    np.dot(weighted_x[:, first], weighted_x[:, second])
+                    / (norms[first] * norms[second])
+                )
+            else:
+                continue
             if abs(cosine) > 1 - 1e-6:
-                copies[first] = True
-                copies[second] = True
-    chosen: list[int] = []
-    for index in indexes:
-        if copies[index]:
+                parent[find(second)] = find(first)
+    groups: dict[int, list[int]] = {}
+    for index in alive:
+        groups.setdefault(find(index), []).append(index)
+    nuisance: list[int] = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        nuisance.append(members[0])
+        names = [channels[index] for index in members]
+        for index in members:
+            tied[channels[index]] = [name for name in names if name != channels[index]]
+    chosen = list(nuisance)
+    for index in alive:
+        if channels[index] in tied:
             continue
         trial = weighted_x[:, [*chosen, index]]
         if np.linalg.matrix_rank(trial, tol=1e-6) > len(chosen):
-            chosen.append(int(index))
-    keep[chosen] = True
-    return keep
+            chosen.append(index)
+            report[index] = True
+    used[chosen] = True
+    return report, used, tied
 
 
-def _channel_table(channels, beta, se, keep) -> pd.DataFrame:
-    partners = _tied_partners(channels, keep)
+def _channel_table(channels, beta, se, report, tied) -> pd.DataFrame:
     rows = []
     for index, channel in enumerate(channels):
-        if keep[index]:
-            reason = ""
+        if report[index]:
             status = "separate"
+            reason = ""
             coef = float(beta[index])
             std_err = float(se[index])
+        elif channel in tied:
+            status = "tied"
+            others = ", ".join(tied[channel])
+            reason = (
+                f"{channel} moves with {others}; their shared path is controlled for "
+                "and is not split into a channel slope"
+            )
+            coef = float("nan")
+            std_err = float("nan")
         else:
-            status = "tied" if partners[channel] else "not separable"
-            others = ", ".join(partners[channel]) or "the other channels"
-            reason = f"{channel} moves with {others}; only the bundle total is used"
+            status = "not separable"
+            reason = f"{channel} is not separable from the other channels in this fit"
             coef = float("nan")
             std_err = float("nan")
         rows.append(
@@ -330,30 +405,26 @@ def _channel_table(channels, beta, se, keep) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _tied_partners(channels, keep) -> dict[str, list[str]]:
-    unidentified = [channel for channel, flagged in zip(channels, keep) if not flagged]
-    return {
-        channel: [other for other in unidentified if other != channel]
-        for channel in channels
-    }
-
-
 def _bundle_table(identified, withheld, channels, beta, keep) -> pd.DataFrame:
     rows = []
     for record in identified.cells.itertuples(index=False):
         group = withheld.loc[withheld["cell"] == record.cell].set_index("channel")
         parts = record.bundle.split("+") if record.bundle else []
         usable = [channel for channel in parts if channel in group.index and keep[channels.index(channel)]]
+        measured = float(record.coef)
         if usable and len(usable) == len(parts):
             predicted = -sum(float(beta[channels.index(channel)]) * float(group.loc[channel, "withheld"]) for channel in parts)
+            gap = predicted - measured
         else:
             predicted = float("nan")
+            gap = float("nan")
         rows.append(
             {
                 "cell": record.cell,
                 "bundle": record.bundle,
-                "measured_effect": float(record.coef),
+                "measured_effect": measured,
                 "predicted_effect": predicted,
+                "gap": gap,
             }
         )
     return pd.DataFrame(rows)

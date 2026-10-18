@@ -1,0 +1,47 @@
+{
+  "treatment_start": "2023-10-02",
+  "n_geos": 40,
+  "n_weeks": 156,
+  "cell_counts": {
+    "1": 8,
+    "2": 8,
+    "3": 8,
+    "control": 16
+  },
+  "max_abs_pct_error": 0.20415523307140593,
+  "adjustments": [
+    {
+      "cell": "1",
+      "channel": "Channel2",
+      "impression_shift": 120947.87232142859,
+      "sales_shift": 70.16777773636443,
+      "share": 0.126269738975263
+    },
+    {
+      "cell": "2",
+      "channel": "Channel1",
+      "impression_shift": -118115.42276785715,
+      "sales_shift": -83.23323022653052,
+      "share": 0.2617196509859741
+    }
+  ]
+}
+ channel   status tied_with
+Channel0 separate          
+Channel1 separate          
+Channel2 separate          
+cell            bundle  measured_effect  predicted_effect
+   1 Channel0+Channel1      -587.222486       -540.061859
+   2 Channel0+Channel2      -251.472915       -240.060927
+   3 Channel1+Channel2      -399.882260       -378.396967
+ channel   status  planted  estimated      std_err         error  abs_pct_error
+Channel0 separate   0.0002   0.000200 6.225932e-07 -3.359399e-07       0.167970
+Channel1 separate   0.0005   0.000501 7.748771e-07  8.786839e-07       0.175737
+Channel2 separate   0.0001   0.000100 8.325427e-07  2.041552e-07       0.204155
+cell  channel  impression_shift  sales_shift   share
+   1 Channel2     120947.872321    70.167778 0.12627
+   2 Channel1    -118115.422768   -83.233230 0.26172
+ channel   status     coef                                                      reason
+Channel0     tied      NaN Channel0 moves with Channel1; only the bundle total is used
+Channel1     tied      NaN Channel1 moves with Channel0; only the bundle total is used
+Channel2 separate 0.000302                                                            

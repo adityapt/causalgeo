@@ -60,7 +60,7 @@ def test_go_dark_recovers_att():
     assert report.n_treatment_geos == 8
     assert report.n_control_geos == 8
     assert report.method == "tbr"
-    assert report.cov_type == "tbr"
+    assert report.cov_type == "hac"
     assert report.pre_r2 is not None
     # Go-dark: treatment spend falls, conversions fall, so iCPD is positive.
     assert report.spend_delta == pytest.approx(-10.0, abs=0.01)
@@ -80,6 +80,34 @@ def test_twfe_and_sc_recover_the_same_att():
     assert twfe.lift == pytest.approx(true, abs=0.3)
     assert sc.method == "sc"
     assert sc.lift == pytest.approx(true, abs=0.5)
+
+
+def test_sdid_analyze_and_control_geo_placebo():
+    treat = ["G0"]
+    ctrl = [f"C{i}" for i in range(10)]
+    data, t0 = _kpi_panel(-4.0, treat, ctrl, seed=8)
+    exp = GeoExperiment(data, AssignmentMap.from_sets(treat, ctrl), t0)
+
+    report = exp.analyze(
+        Intervention.GO_DARK,
+        counterfactual="sdid",
+        sdid_placebo_replications=20,
+        random_state=2,
+    )
+    placebo = exp.placebo(
+        location="C0",
+        counterfactual="sdid",
+        sdid_placebo_replications=20,
+        random_state=2,
+    )
+
+    assert report.method == "sdid"
+    assert report.cov_type == "placebo"
+    assert report.lift == pytest.approx(-4.0, abs=0.5)
+    assert placebo.method == "sdid"
+    assert placebo.n_treatment_geos == 1
+    assert placebo.n_control_geos == 9
+    assert placebo.ci_lower <= 0 <= placebo.ci_upper
 
 
 def test_icpd_requires_spend_series():

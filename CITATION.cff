@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it.
+title: causalgeo
+version: 0.1.0
+date-released: 2026-10-18
+license: MIT
+repository-code: https://github.com/adityapt/causalgeo
+authors:
+  - family-names: Puttaparthi Tirumala
+    given-names: Aditya
+    email: puttaparthy.aditya@gmail.com
+    affiliation: Zillow
