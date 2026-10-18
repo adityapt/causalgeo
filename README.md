@@ -1,5 +1,9 @@
 # causalgeo
 
+[![tests](https://github.com/adityapt/causalgeo/actions/workflows/check.yml/badge.svg)](https://github.com/adityapt/causalgeo/actions/workflows/check.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
+[![python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](pyproject.toml)
+
 Python library for **geo experiments**. Two jobs:
 
 1. **One cell you were handed.** `analyze()` estimates lift from treatment geos, control geos, and a pretest/test series. The default is time-based regression. Synthetic difference-in-differences, synthetic control, and clustered two-way fixed effects are options.
@@ -185,11 +189,13 @@ CI tests in `tests/test_simulate.py` fail if those gates break. This does **not*
 
 ## Install
 
+The tagged release:
+
 ```bash
-pip install -e ".[dev]"
+pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.1.0"
 ```
 
-The manuscript example also needs matplotlib:
+To run the tests and rebuild the manuscript:
 
 ```bash
 pip install -e ".[dev,paper]"
