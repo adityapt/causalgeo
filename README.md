@@ -201,3 +201,5 @@ To run the tests and rebuild the manuscript:
 pip install -e ".[dev,paper]"
 make check
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
