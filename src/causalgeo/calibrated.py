@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from causalgeo.design import ConcurrentDesign
-from causalgeo.exposure import adjust_for_exposure
+from causalgeo.exposure import adjust_for_exposure, warn_if_impressions_missing, _sum_or_missing
 from causalgeo.identified import IdentifiedEstimate, estimate_identified
 
 
@@ -43,8 +43,17 @@ def disentangle(
     channel_col: str = "channel",
     impression_col: str = "impressions",
     decay: float = 0.0,
+    adjust_exposure: bool = False,
+    check_stability: bool = True,
 ) -> ChannelModel:
-    """Estimate bundle effects from the assignment, then split them by channel."""
+    """Estimate bundle effects from the assignment, then split them by channel.
+
+    The reported cell estimate is the unadjusted experiment unless
+    ``adjust_exposure`` is true. When a still-on channel's impressions moved
+    enough to flag, the channel split uses the cell total after that shift is
+    removed. ``check_stability`` refits with a weaker calibration weight and
+    without one influential market.
+    """
     identified = estimate_identified(
         design,
         outcomes,
@@ -53,7 +62,7 @@ def disentangle(
         geo_col=geo_col,
         date_col=date_col,
     )
-    identified, exposure = adjust_for_exposure(
+    raw, exposure = adjust_for_exposure(
         design,
         outcomes,
         impressions,
@@ -64,11 +73,34 @@ def disentangle(
         date_col=date_col,
         channel_col=channel_col,
         impression_col=impression_col,
+        apply=False,
     )
-    model = fit_channel_model(
+    cleaned, _ = adjust_for_exposure(
+        design,
         outcomes,
         impressions,
         identified,
+        treatment_start=treatment_start,
+        outcome=outcome,
+        geo_col=geo_col,
+        date_col=date_col,
+        channel_col=channel_col,
+        impression_col=impression_col,
+        apply=True,
+    )
+    warn_if_impressions_missing(impressions, impression_col)
+    flagged = bool(len(exposure) and bool(exposure["adjust"].any()))
+    target = cleaned if flagged else raw
+    exposure["removed_from_split"] = exposure["adjust"] if flagged else False
+    if adjust_exposure:
+        exposure.loc[exposure["adjust"], "applied"] = True
+        identified = cleaned
+    else:
+        identified = raw
+    model = fit_channel_model(
+        outcomes,
+        impressions,
+        target,
         design,
         treatment_start=treatment_start,
         outcome=outcome,
@@ -77,7 +109,39 @@ def disentangle(
         channel_col=channel_col,
         impression_col=impression_col,
         decay=decay,
+        warn_missing=False,
     )
+    experimental = raw.cells.set_index("cell")["coef"]
+    model = ChannelModel(
+        channels=model.channels,
+        bundles=model.bundles.assign(
+            experimental_effect=model.bundles["cell"].astype(str).map(experimental)
+        ),
+        daily=model.daily,
+        exposure=model.exposure,
+        cells=model.cells,
+    )
+    if check_stability:
+        model = ChannelModel(
+            channels=_mark_unstable(
+                model.channels,
+                outcomes,
+                impressions,
+                identified,
+                design,
+                treatment_start,
+                outcome,
+                geo_col,
+                date_col,
+                channel_col,
+                impression_col,
+                decay,
+            ),
+            bundles=model.bundles,
+            daily=model.daily,
+            exposure=pd.DataFrame(),
+            cells=model.cells,
+        )
     return ChannelModel(
         channels=model.channels,
         bundles=model.bundles,
@@ -99,10 +163,15 @@ def fit_channel_model(
     channel_col: str = "channel",
     impression_col: str = "impressions",
     decay: float = 0.0,
+    calibrate: bool = True,
+    calibration_scale: float = 1.0,
+    warn_missing: bool = True,
 ) -> ChannelModel:
     """Fit channel effects softly calibrated to each measured bundle effect."""
     if not 0 <= decay < 1:
         raise ValueError("decay must be between 0 and 1, not including 1")
+    if warn_missing:
+        warn_if_impressions_missing(impressions, impression_col)
     transformed = _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay)
     channels = _channel_list(transformed, channel_col)
     wide = _wide(transformed, geo_col, date_col, channel_col, impression_col, channels)
@@ -113,9 +182,19 @@ def fit_channel_model(
         outcomes, wide, design, outcome, geo_col, date_col, channels, treatment_start
     )
     beta, se, identified_mask, tied = _fit_weighted(
-        obs_x, obs_y, identified, withheld, channels
+        obs_x,
+        obs_y,
+        identified,
+        withheld,
+        channels,
+        calibrate=calibrate,
+        calibration_scale=calibration_scale,
     )
-    channel_table = _channel_table(channels, beta, se, identified_mask, tied)
+    untested = _never_turned_off(design)
+    for index, channel in enumerate(channels):
+        if channel in untested:
+            identified_mask[index] = False
+    channel_table = _channel_table(channels, beta, se, identified_mask, tied, untested)
     bundle_table = _bundle_table(identified, withheld, channels, beta, identified_mask)
     daily = _daily(wide, channels, beta, identified_mask, geo_col, date_col)
     return ChannelModel(
@@ -156,8 +235,7 @@ def _wide(impressions, geo_col, date_col, channel_col, impression_col, channels)
         index=[geo_col, date_col],
         columns=channel_col,
         values="exposure",
-        aggfunc="sum",
-        fill_value=0.0,
+        aggfunc=_sum_or_missing,
     )
     for channel in channels:
         if channel not in grid.columns:
@@ -223,6 +301,7 @@ def _observational_block(outcomes, wide, design, outcome, geo_col, date_col, cha
     post = frame[date_col] >= pd.Timestamp(treatment_start)
     # Dark market-days belong to the calibration equations, not to this regression.
     observational = frame.loc[~post | (frame["cell"] == "control")].copy()
+    observational = observational.dropna(subset=[outcome, *channels])
     if observational.empty:
         return np.zeros((0, len(channels))), np.zeros(0)
     demeaned = _demean(observational, geo_col, date_col, [outcome, *channels])
@@ -240,7 +319,15 @@ def _demean(frame, geo_col, date_col, columns):
     return out
 
 
-def _fit_weighted(obs_x, obs_y, identified, withheld, channels):
+def _fit_weighted(
+    obs_x,
+    obs_y,
+    identified,
+    withheld,
+    channels,
+    calibrate: bool = True,
+    calibration_scale: float = 1.0,
+):
     sigma2 = _observational_variance(obs_x, obs_y)
     x_rows = []
     y_rows = []
@@ -250,17 +337,19 @@ def _fit_weighted(obs_x, obs_y, identified, withheld, channels):
         y_rows.append(obs_y)
         w_rows.append(np.full(len(obs_y), 1.0 / sigma2))
     effects = identified.cells.set_index("cell")
-    for cell, group in withheld.groupby("cell", sort=True):
-        if cell not in effects.index:
-            continue
-        effect = float(effects.loc[cell, "coef"])
-        se = float(effects.loc[cell, "std_err"])
-        se = max(se, 1e-8)
-        row = np.array([float(group.set_index("channel").loc[channel, "withheld"]) for channel in channels])
-        # Being dark removes these impressions, so the measured change is minus their contribution.
-        x_rows.append(row.reshape(1, -1))
-        y_rows.append(np.array([-effect]))
-        w_rows.append(np.array([1.0 / se**2]))
+    if calibrate:
+        for cell, group in withheld.groupby("cell", sort=True):
+            if cell not in effects.index:
+                continue
+            effect = float(effects.loc[cell, "coef"])
+            se = max(float(effects.loc[cell, "std_err"]), 1e-8)
+            row = np.array(
+                [float(group.set_index("channel").loc[channel, "withheld"]) for channel in channels]
+            )
+            # Being dark removes these impressions, so the measured change is minus their contribution.
+            x_rows.append(row.reshape(1, -1))
+            y_rows.append(np.array([-effect]))
+            w_rows.append(np.array([calibration_scale / se**2]))
     if not x_rows:
         raise ValueError("nothing to fit: no observational rows and no bundle effects")
     x = np.vstack(x_rows)
@@ -371,10 +460,20 @@ def _select_columns(
     return report, used, tied
 
 
-def _channel_table(channels, beta, se, report, tied) -> pd.DataFrame:
+def _never_turned_off(design: ConcurrentDesign) -> set[str]:
+    separation = design.separation
+    return set(separation.loc[separation["status"] == "not tested", "channel"].astype(str))
+
+
+def _channel_table(channels, beta, se, report, tied, untested) -> pd.DataFrame:
     rows = []
     for index, channel in enumerate(channels):
-        if report[index]:
+        if channel in untested:
+            status = "not tested"
+            reason = f"{channel} was never turned off"
+            coef = float("nan")
+            std_err = float("nan")
+        elif report[index]:
             status = "separate"
             reason = ""
             coef = float(beta[index])
@@ -400,9 +499,22 @@ def _channel_table(channels, beta, se, report, tied) -> pd.DataFrame:
                 "coef": coef,
                 "std_err": std_err,
                 "reason": reason,
+                "reading": _reading(status),
             }
         )
     return pd.DataFrame(rows)
+
+
+def _reading(status: str) -> str:
+    if status == "separate":
+        return "model-assisted estimate"
+    if status == "unstable":
+        return "model-assisted estimate; unstable across sensitivity checks"
+    if status == "not tested":
+        return "withheld; this channel was never turned off"
+    if status == "tied":
+        return "withheld; the shared path is controlled for"
+    return "withheld; the design cannot name this channel"
 
 
 def _bundle_table(identified, withheld, channels, beta, keep) -> pd.DataFrame:
@@ -443,3 +555,120 @@ def _daily(wide, channels, beta, keep, geo_col, date_col) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(columns=[geo_col, date_col, "channel", "exposure", "impact"])
     return pd.concat(rows, ignore_index=True)
+
+
+def compare_calibration(
+    outcomes: pd.DataFrame,
+    impressions: pd.DataFrame,
+    identified: IdentifiedEstimate,
+    design: ConcurrentDesign,
+    treatment_start: str,
+    outcome: str,
+    **kwargs,
+) -> pd.DataFrame:
+    """Compare the observational channel fit with the calibrated fit."""
+    observational = fit_channel_model(
+        outcomes, impressions, identified, design, treatment_start, outcome, calibrate=False, **kwargs
+    )
+    calibrated = fit_channel_model(
+        outcomes, impressions, identified, design, treatment_start, outcome, calibrate=True, **kwargs
+    )
+    left = observational.channels[["channel", "status", "coef", "std_err"]].rename(
+        columns={"status": "observational_status", "coef": "observational_coef", "std_err": "observational_se"}
+    )
+    right = calibrated.channels[["channel", "status", "coef", "std_err", "reading"]].rename(
+        columns={"status": "calibrated_status", "coef": "calibrated_coef", "std_err": "calibrated_se"}
+    )
+    compared = left.merge(right, on="channel")
+    observational_gap = observational.bundles["gap"].abs().median()
+    calibrated_gap = calibrated.bundles["gap"].abs().median()
+    compared["observational_bundle_gap"] = float(observational_gap)
+    compared["calibrated_bundle_gap"] = float(calibrated_gap)
+    return compared
+
+
+def _mark_unstable(
+    channels,
+    outcomes,
+    impressions,
+    identified,
+    design,
+    treatment_start,
+    outcome,
+    geo_col,
+    date_col,
+    channel_col,
+    impression_col,
+    decay,
+) -> pd.DataFrame:
+    """Refit under a weaker calibration weight and without one market."""
+    variants = [
+        fit_channel_model(
+            outcomes,
+            impressions,
+            identified,
+            design,
+            treatment_start,
+            outcome,
+            geo_col=geo_col,
+            date_col=date_col,
+            channel_col=channel_col,
+            impression_col=impression_col,
+            decay=decay,
+            calibration_scale=0.25,
+            warn_missing=False,
+        )
+    ]
+    geo = _influential_geo(outcomes, design, treatment_start, outcome, geo_col, date_col)
+    if geo is not None:
+        variants.append(
+            fit_channel_model(
+                outcomes.loc[outcomes[geo_col] != geo],
+                impressions.loc[impressions[geo_col] != geo],
+                identified,
+                design,
+                treatment_start,
+                outcome,
+                geo_col=geo_col,
+                date_col=date_col,
+                channel_col=channel_col,
+                impression_col=impression_col,
+                decay=decay,
+                warn_missing=False,
+            )
+        )
+    marked = channels.copy()
+    base = marked.set_index("channel")
+    for channel in base.index:
+        if base.loc[channel, "status"] != "separate":
+            continue
+        coef = float(base.loc[channel, "coef"])
+        se = float(base.loc[channel, "std_err"])
+        for variant in variants:
+            other = variant.channels.set_index("channel")
+            moved = (
+                other.loc[channel, "status"] != "separate"
+                or not np.isfinite(other.loc[channel, "coef"])
+                or abs(float(other.loc[channel, "coef"]) - coef) > max(0.2 * abs(coef), 2.0 * se)
+            )
+            if moved:
+                marked.loc[marked["channel"] == channel, "status"] = "unstable"
+                marked.loc[marked["channel"] == channel, "reading"] = _reading("unstable")
+                marked.loc[marked["channel"] == channel, "reason"] = (
+                    "the slope moves when the calibration weight changes or one market is left out"
+                )
+                break
+    return marked
+
+
+def _influential_geo(outcomes, design, treatment_start, outcome, geo_col, date_col):
+    assignment = design.assignment.drop_duplicates(geo_col).set_index(geo_col)["cell"].astype(str)
+    frame = outcomes[[geo_col, date_col, outcome]].copy()
+    frame[date_col] = pd.to_datetime(frame[date_col])
+    frame["cell"] = frame[geo_col].map(assignment)
+    post = frame[date_col] >= pd.Timestamp(treatment_start)
+    test = frame.loc[post & (frame["cell"] != "control")]
+    if test.empty:
+        return None
+    score = test.groupby(geo_col)[outcome].mean().abs()
+    return score.idxmax()

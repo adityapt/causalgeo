@@ -7,7 +7,7 @@
 Python library for **geo experiments**. Two jobs:
 
 1. **One cell you were handed.** `analyze()` estimates lift from treatment geos, control geos, and a pretest/test series. The default is time-based regression. Synthetic difference-in-differences, synthetic control, and clustered two-way fixed effects are options.
-2. **Several cells in the same weeks, each turning off a bundle of channels.** `design_concurrent_test` assigns markets. `disentangle` estimates each bundle from the holdout flag, adjusts that estimate when a channel that was supposed to stay on shifted in the dark markets, and splits the bundle totals into channel slopes with a soft calibration. The bundle table reports the gap that remains. A channel whose impressions are a copy of another channel is not given a slope; the shared path stays in the fit as one control. Daily impact is exposure times the channel slope.
+2. **Several cells in the same weeks, each turning off a bundle of channels.** Start here when the question is a channel split. `design_concurrent_test` assigns markets. `disentangle` estimates each bundle from the holdout flag and splits the bundle totals into channel slopes with a soft calibration. The experimental cell estimate is left as measured. A still-on channel that gained or lost impressions is flagged, and that shift is removed from the total before the channel split. Pass `adjust_exposure=True` to replace the reported cell estimate with that same refit. The bundle table reports the gap that remains. A channel whose impressions are a copy of another channel is not given a slope; the shared path stays in the fit as one control. A slope that moves when the calibration weight is weakened, or when one market is left out, is marked `unstable` and should be read as model-assisted. Daily impact is exposure times the channel slope. Missing channel-day rows stay missing; a recorded zero stays zero.
 
 ```python
 from causalgeo import design_concurrent_test, disentangle
@@ -27,7 +27,9 @@ result = disentangle(
 )
 ```
 
-`result.channels` is one row per channel. `result.bundles` is the measured bundle effect next to the effect implied by the channel slopes. `result.exposure` says whether a still-on channel was adjusted for. `result.daily` is the daily channel impact.
+`result.channels` is one row per channel, with a `reading` column. `result.bundles` is the measured bundle effect next to the effect implied by the channel slopes. `result.exposure` flags a still-on shift and says whether that flag was applied. `result.daily` is the daily channel impact. `bootstrap_channel_intervals` resamples whole markets and refits. `compare_calibration` puts the observational fit next to the calibrated fit.
+
+`examples/concurrent_holdout.py` builds a small panel, prints the channel table, and shows a split the package refuses because two channels are the same series.
 
 The single-cell path is unchanged. You supply treatment geos, control geos, and a pretest/test conversion series. `analyze()` returns lift, percent lift, and iCPD. The setting is the same as [GeoLift](https://facebookincubator.github.io/GeoLift/) and [Meridian GeoX](https://developers.google.com/meridian/geox).
 
@@ -43,7 +45,7 @@ Incrementality always needs a **control group**. Comparing two spend arms with n
 
 ## How this differs from GeoLift and GeoX
 
-GeoLift and GeoX both **design the experiment and then analyze the design they produced**. They assume one channel, one clean treatment/control split, and spend that behaves as planned. `causalgeo` starts one step later: **the assignment already exists, it is messy, and delivery missed plan.**
+GeoLift and GeoX design a market test and then analyze that design. Their search tools are built around one treatment contrast. `causalgeo` also starts from an assignment that already exists, including several cells in the same weeks and delivery that missed the plan. It does not replace their market-selection or power search.
 
 | | GeoLift | Meridian GeoX | causalgeo |
 |---|---|---|---|

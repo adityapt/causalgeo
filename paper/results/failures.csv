@@ -1,0 +1,9 @@
+setting,coverage,gap
+Linear,0.967,2.13
+Serial correlation,0.956,3.09
+Incomplete delivery,0.967,3.84
+Heterogeneous slopes,0.356,4.27
+Budget moved,0.967,12.6
+"Budget moved, refit",0.967,12.6
+Carryover omitted,0.0,48.08983191462639
+Saturation omitted,0.0,28.921985383542264

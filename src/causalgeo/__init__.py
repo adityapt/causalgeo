@@ -1,7 +1,8 @@
 """causalgeo: geo incrementality experiments (holdback, go-dark, heavy-up)."""
 
 from causalgeo.assignment import AssignmentMap
-from causalgeo.calibrated import disentangle
+from causalgeo.bootstrap import bootstrap_channel_intervals
+from causalgeo.calibrated import compare_calibration, disentangle
 from causalgeo.design import design_concurrent_test
 from causalgeo.diagnostics import DiagnosticsReport, diagnose
 from causalgeo.estimate import LiftReport
@@ -35,6 +36,8 @@ __all__ = [
     "MissingSpendError",
     "MixedRoleError",
     "OverlapError",
+    "bootstrap_channel_intervals",
+    "compare_calibration",
     "design_concurrent_test",
     "diagnose",
     "disentangle",

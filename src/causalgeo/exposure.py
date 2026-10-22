@@ -9,6 +9,8 @@ regression.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -29,8 +31,14 @@ def adjust_for_exposure(
     channel_col: str = "channel",
     impression_col: str = "impressions",
     material: float = 0.10,
+    apply: bool = False,
 ) -> tuple[IdentifiedEstimate, pd.DataFrame]:
-    """Adjust a bundle effect when a still-on channel shifted in the dark markets."""
+    """Flag a still-on exposure shift, and adjust the bundle only when asked.
+
+    An impression shift does not say whether the holdout moved the budget.
+    The default leaves the experimental estimate unchanged and records the
+    shift. Pass ``apply=True`` to refit the flagged cells.
+    """
     if not 0 < material < 1:
         raise ValueError("material must be between 0 and 1")
     check = _exposure_check(
@@ -46,7 +54,8 @@ def adjust_for_exposure(
         impression_col,
         material,
     )
-    if check.empty or not bool(check["adjust"].any()):
+    check["applied"] = False
+    if check.empty or not apply or not bool(check["adjust"].any()):
         cells = identified.cells.copy()
         cells["unadjusted_effect"] = cells["coef"]
         cells["adjusted"] = False
@@ -72,6 +81,7 @@ def adjust_for_exposure(
             float(row["ci_upper"]),
         ]
         cells.loc[cells["cell"] == cell, "adjusted"] = True
+        check.loc[(check["cell"] == cell) & check["adjust"], "applied"] = True
     return _replace_cells(identified, cells), check
 
 
@@ -106,7 +116,8 @@ def _exposure_check(
             slope = _pre_slope(panel.loc[pre], outcome, channel, geo_col, date_col)
             sales_shift = slope * shift
             bundle_effect = float(effects[cell]) if cell in effects.index else float("nan")
-            scale = max(abs(bundle_effect), 1e-8)
+            outcome_scale = float(panel.loc[pre, outcome].std(ddof=1))
+            scale = max(abs(bundle_effect), outcome_scale, 1e-8)
             rows.append(
                 {
                     "cell": cell,
@@ -134,8 +145,7 @@ def _panel(outcomes, impressions, design, outcome, geo_col, date_col, channel_co
         index=[geo_col, date_col],
         columns=channel_col,
         values=impression_col,
-        aggfunc="sum",
-        fill_value=0.0,
+        aggfunc=_sum_or_missing,
     ).reset_index()
     wide[date_col] = pd.to_datetime(wide[date_col])
     frame = outcomes[[geo_col, date_col, outcome]].copy()
@@ -144,6 +154,23 @@ def _panel(outcomes, impressions, design, outcome, geo_col, date_col, channel_co
     assignment = design.assignment.drop_duplicates(geo_col).set_index(geo_col)["cell"]
     frame["cell"] = frame[geo_col].map(assignment)
     return frame
+
+
+def _sum_or_missing(values: pd.Series) -> float:
+    """Sum recorded impressions. A missing value stays missing."""
+    if values.isna().any():
+        return float("nan")
+    return float(values.sum())
+
+
+def warn_if_impressions_missing(impressions: pd.DataFrame, impression_col: str) -> None:
+    """Tell the caller that a blank impression was not filled in as zero."""
+    if impression_col in impressions.columns and impressions[impression_col].isna().any():
+        warnings.warn(
+            "missing impressions were left missing; those market-days are dropped from the channel fit",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def _impression_shift(panel: pd.DataFrame, channel: str, cell: str, start: pd.Timestamp) -> float:

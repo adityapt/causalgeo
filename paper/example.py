@@ -147,6 +147,8 @@ def tied_case(outcomes: pd.DataFrame, impressions: pd.DataFrame, design, treatme
         copied,
         outcome="sales",
         treatment_start=treatment_start,
+        adjust_exposure=True,
+        check_stability=False,
     )
     return result.channels[["channel", "status", "coef", "reason"]]
 
@@ -161,6 +163,8 @@ def main() -> None:
         impressions[["geo", "date", "channel", "impressions"]],
         outcome="sales",
         treatment_start=treatment_start,
+        adjust_exposure=True,
+        check_stability=False,
     )
     slopes = slope_table(result)
     exposure = result.exposure.loc[result.exposure["adjust"], ["cell", "channel", "impression_shift", "sales_shift", "share"]]

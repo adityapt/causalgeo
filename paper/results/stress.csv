@@ -1,0 +1,4 @@
+scenario,label,runs,median_abs_contribution_error_pct,coverage,coverage_mc_lower,coverage_mc_upper,median_abs_bundle_gap_pct
+carryover_omitted,Carryover omitted,200,47.256895244870606,0.0,0.0,0.0,48.08983191462639
+carryover_modeled,Carryover modeled,200,0.1904859768148458,0.9433333333333335,0.9241760781973819,0.962490588469285,1.0291057373694394
+saturation_omitted,Saturation omitted,200,27.00365556857782,0.0,0.0,0.0,28.921985383542264

@@ -25,7 +25,7 @@
     "scale":0.25,
     "rho":1.0,
     "runs":200,
-    "median_abs_pct_error":2.2434152969,
+    "median_abs_pct_error":2.2325175143,
     "coverage":0.94,
     "coverage_mcse":0.0168349959,
     "coverage_mc_lower":0.9070034081,

@@ -64,12 +64,42 @@ def _world():
     return design, pd.DataFrame(outcomes), pd.DataFrame(impressions)
 
 
-def test_only_the_cell_with_a_large_exposure_shift_is_adjusted():
+def test_exposure_adjustment_is_reported_but_not_applied_by_default():
     design, outcomes, impressions = _world()
     plain = estimate_identified(design, outcomes, outcome="sales", treatment_start="2025-01-21")
-    result = disentangle(design, outcomes, impressions, outcome="sales", treatment_start="2025-01-21")
+    result = disentangle(
+        design,
+        outcomes,
+        impressions,
+        outcome="sales",
+        treatment_start="2025-01-21",
+        check_stability=False,
+    )
     check = result.exposure.set_index(["cell", "channel"])
     assert bool(check.loc[("2", "Channel1"), "adjust"])
+    assert bool(check.loc[("2", "Channel1"), "removed_from_split"])
+    assert not bool(check.loc[("2", "Channel1"), "applied"])
+    plain_cells = plain.cells.set_index("cell")["coef"]
+    reported = result.cells.set_index("cell")["coef"]
+    split_target = result.bundles.set_index("cell")["measured_effect"]
+    assert abs(reported["2"] - plain_cells["2"]) < 1e-8
+    assert abs(split_target["2"] - plain_cells["2"]) > 1
+
+
+def test_requested_exposure_adjustment_changes_only_the_flagged_cell():
+    design, outcomes, impressions = _world()
+    plain = estimate_identified(design, outcomes, outcome="sales", treatment_start="2025-01-21")
+    result = disentangle(
+        design,
+        outcomes,
+        impressions,
+        outcome="sales",
+        treatment_start="2025-01-21",
+        adjust_exposure=True,
+        check_stability=False,
+    )
+    check = result.exposure.set_index(["cell", "channel"])
+    assert bool(check.loc[("2", "Channel1"), "applied"])
     assert not bool(check.loc[("1", "Channel2"), "adjust"])
     assert not bool(check.loc[("3", "Channel0"), "adjust"])
 

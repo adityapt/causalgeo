@@ -97,7 +97,15 @@ def _run_one(task: tuple[float, float, int]) -> list[dict]:
     if _RAW is None:
         raise RuntimeError("simulation worker has no media data")
     design, outcomes, impressions, start, slopes = _panel(_RAW, seed, scale, rho)
-    result = disentangle(design, outcomes, impressions, outcome="sales", treatment_start=start)
+    result = disentangle(
+        design,
+        outcomes,
+        impressions,
+        outcome="sales",
+        treatment_start=start,
+        adjust_exposure=True,
+        check_stability=False,
+    )
     fitted = result.channels.set_index("channel")
     rows = []
     for channel, planted in slopes.items():
