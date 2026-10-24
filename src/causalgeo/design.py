@@ -49,6 +49,41 @@ def design_concurrent_test(
     return ConcurrentDesign(assignment=assignment, schedule=schedule, separation=separation)
 
 
+def design_from_assignment(
+    assignment: pd.DataFrame,
+    channels: list[str],
+    bundles: list[list[str]],
+    geo_col: str = "geo",
+    cell_col: str = "cell",
+) -> ConcurrentDesign:
+    """Use a market assignment that already exists.
+
+    ``assignment`` has one row per market. Cells are ``"control"`` or
+    ``"1"``, ``"2"``, and so on, in the same order as ``bundles``.
+    """
+    if not bundles or any(len(bundle) == 0 for bundle in bundles):
+        raise ValueError("each cell needs at least one channel turned off")
+    missing = [col for col in (geo_col, cell_col) if col not in assignment.columns]
+    if missing:
+        raise ValueError(f"assignment is missing {missing}")
+    frame = assignment[[geo_col, cell_col]].drop_duplicates(geo_col).copy()
+    frame[cell_col] = frame[cell_col].astype(str)
+    expected = {str(index) for index in range(1, len(bundles) + 1)} | {"control"}
+    unknown = sorted(set(frame[cell_col]) - expected)
+    if unknown:
+        raise ValueError(f"cells must be control or 1..{len(bundles)}; found {unknown}")
+    if not frame[cell_col].eq("control").any():
+        raise ValueError("the assignment has no control markets")
+    labeled = frame.rename(columns={cell_col: "cell"})
+    labeled["role"] = np.where(labeled["cell"].eq("control"), "control", "test")
+    schedule = _schedule(channels, bundles)
+    return ConcurrentDesign(
+        assignment=labeled.reset_index(drop=True),
+        schedule=schedule,
+        separation=_separation(schedule),
+    )
+
+
 def _check_inputs(geos, channels, bundles, geo_col, stratum_col, control_share) -> None:
     if geo_col not in geos.columns or stratum_col not in geos.columns:
         raise ValueError(f"geos needs '{geo_col}' and '{stratum_col}' columns")

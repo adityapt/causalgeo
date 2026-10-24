@@ -4,10 +4,11 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
 [![python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](pyproject.toml)
 
-Python library for **geo experiments**. Two jobs:
+Python library for **concurrent geo holdouts**. Each cell turns off a bundle of channels. The cell total is the experiment. A channel slope is a model-assisted split of that total, reported next to the gap, and withheld when the channels cannot be separated.
 
-1. **One cell you were handed.** `analyze()` estimates lift from treatment geos, control geos, and a pretest/test series. The default is time-based regression. Synthetic difference-in-differences, synthetic control, and clustered two-way fixed effects are options.
-2. **Several cells in the same weeks, each turning off a bundle of channels.** Start here when the question is a channel split. `design_concurrent_test` assigns markets. `disentangle` estimates each bundle from the holdout flag and splits the bundle totals into channel slopes with a soft calibration. The experimental cell estimate is left as measured. A still-on channel that gained or lost impressions is flagged, and that shift is removed from the total before the channel split. Pass `adjust_exposure=True` to replace the reported cell estimate with that same refit. The bundle table reports the gap that remains. A channel whose impressions are a copy of another channel is not given a slope; the shared path stays in the fit as one control. A slope that moves when the calibration weight is weakened, or when one market is left out, is marked `unstable` and should be read as model-assisted. Daily impact is exposure times the channel slope. Missing channel-day rows stay missing; a recorded zero stays zero.
+`design_concurrent_test` assigns markets inside strata. `design_from_assignment` uses an assignment you already have. `disentangle` estimates each bundle from the holdout flag. The reported cell estimate stays unadjusted unless `adjust_exposure=True`. A still-on impression shift is removed from the total before the split. `material` is the share of the cell effect that flags that shift (default 0.10). `copy_tolerance` is how close two impression paths must be before both slopes are withheld (default `1e-6`). A slope that moves when the calibration weight is weakened, or when one market is left out, is marked `unstable`. The published example turns that check off. Missing impressions stay missing and the fit warns. A channel the design never turns off is labeled `not tested`.
+
+`analyze()` is the single-cell path: time-based regression by default, with synthetic control, synthetic difference-in-differences, or clustered two-way fixed effects. It is not the channel split.
 
 ```python
 from causalgeo import design_concurrent_test, disentangle
@@ -45,7 +46,7 @@ Incrementality always needs a **control group**. Comparing two spend arms with n
 
 ## How this differs from GeoLift and GeoX
 
-GeoLift and GeoX design a market test and then analyze that design. Their search tools are built around one treatment contrast. `causalgeo` also starts from an assignment that already exists, including several cells in the same weeks and delivery that missed the plan. It does not replace their market-selection or power search.
+GeoLift and GeoX can design and measure more than one cell. They do not split a cell into channels or tie a mix model to the measured cell total. `causalgeo` starts from an assignment that already exists, including several cells in the same weeks and delivery that missed the plan. It does not replace their market-selection or power search.
 
 | | GeoLift | Meridian GeoX | causalgeo |
 |---|---|---|---|
@@ -194,7 +195,7 @@ CI tests in `tests/test_simulate.py` fail if those gates break. This does **not*
 The tagged release:
 
 ```bash
-pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.1.0"
+pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.2.0"
 ```
 
 To run the tests and rebuild the manuscript:

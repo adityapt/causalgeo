@@ -2,8 +2,8 @@
 
 from causalgeo.assignment import AssignmentMap
 from causalgeo.bootstrap import bootstrap_channel_intervals
-from causalgeo.calibrated import compare_calibration, disentangle
-from causalgeo.design import design_concurrent_test
+from causalgeo.calibrated import compare_calibration, disentangle, experiment_only_split
+from causalgeo.design import design_concurrent_test, design_from_assignment
 from causalgeo.diagnostics import DiagnosticsReport, diagnose
 from causalgeo.estimate import LiftReport
 from causalgeo.exceptions import (
@@ -18,7 +18,7 @@ from causalgeo.grid import GridIdentification, identify_grid
 from causalgeo.interventions import HEAVY_UP, HOLDBACK, GO_DARK, Intervention
 from causalgeo.metrics import MetricSpec
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "AssignmentMap",
@@ -39,8 +39,10 @@ __all__ = [
     "bootstrap_channel_intervals",
     "compare_calibration",
     "design_concurrent_test",
+    "design_from_assignment",
     "diagnose",
     "disentangle",
+    "experiment_only_split",
     "identify_grid",
     "__version__",
 ]

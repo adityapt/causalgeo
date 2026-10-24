@@ -60,8 +60,8 @@ def bundle_contrast(raw: pd.DataFrame) -> pd.DataFrame:
 
 def plot_separation(detail: pd.DataFrame, path: Path) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(7.6, 3.05), sharex=True)
-    for scale, color, label in ((1.0, DARK, "Original slopes"), (0.25, BLUE, "Quarter slopes")):
-        group = detail.loc[detail["scale"] == scale]
+    for noise, color, label in ((1.0, DARK, "Baseline noise"), (4.0, BLUE, "Four times the noise")):
+        group = detail.loc[detail["noise"] == noise]
         rhos = sorted(group["rho"].unique())
         error, cover, cover_error, withheld = [], [], [], []
         for rho in rhos:
@@ -265,6 +265,9 @@ def failure_chart() -> pd.DataFrame:
         ("Heterogeneous slopes", robust.loc["heterogeneous"]),
         ("Budget moved", robust.loc["redistribution"]),
         ("Budget moved, refit", robust.loc["redistribution_adjusted"]),
+        ("Confounded channel", robust.loc["confounded"]),
+        ("Collinear, observational", robust.loc["collinear_weak_observational"]),
+        ("Collinear, calibrated", robust.loc["collinear_weak_calibrated"]),
         ("Carryover omitted", stress.loc["carryover_omitted"]),
         ("Saturation omitted", stress.loc["saturation_omitted"]),
     ]
@@ -281,7 +284,7 @@ def failure_chart() -> pd.DataFrame:
 
 
 def plot_failures(frame: pd.DataFrame, path: Path) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(7.6, 3.35), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(7.6, 4.6), sharey=True)
     y = np.arange(len(frame))[::-1]
     coverage_colors = [
         ACCENT if coverage < 0.9 else BLUE if setting.endswith("refit") else DARK

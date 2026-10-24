@@ -11,4 +11,7 @@ test:
 reproduce:
 	cd paper && $(PYTHON) reproduce.py
 
-check: test reproduce
+reproduce-fast:
+	cd paper && $(PYTHON) reproduce.py --fast
+
+check: test reproduce-fast

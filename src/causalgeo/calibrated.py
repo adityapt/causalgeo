@@ -45,6 +45,8 @@ def disentangle(
     decay: float = 0.0,
     adjust_exposure: bool = False,
     check_stability: bool = True,
+    material: float = 0.10,
+    copy_tolerance: float = 1e-6,
 ) -> ChannelModel:
     """Estimate bundle effects from the assignment, then split them by channel.
 
@@ -73,6 +75,7 @@ def disentangle(
         date_col=date_col,
         channel_col=channel_col,
         impression_col=impression_col,
+        material=material,
         apply=False,
     )
     cleaned, _ = adjust_for_exposure(
@@ -86,6 +89,7 @@ def disentangle(
         date_col=date_col,
         channel_col=channel_col,
         impression_col=impression_col,
+        material=material,
         apply=True,
     )
     warn_if_impressions_missing(impressions, impression_col)
@@ -110,6 +114,7 @@ def disentangle(
         impression_col=impression_col,
         decay=decay,
         warn_missing=False,
+        copy_tolerance=copy_tolerance,
     )
     experimental = raw.cells.set_index("cell")["coef"]
     model = ChannelModel(
@@ -136,6 +141,7 @@ def disentangle(
                 channel_col,
                 impression_col,
                 decay,
+                copy_tolerance,
             ),
             bundles=model.bundles,
             daily=model.daily,
@@ -166,10 +172,13 @@ def fit_channel_model(
     calibrate: bool = True,
     calibration_scale: float = 1.0,
     warn_missing: bool = True,
+    copy_tolerance: float = 1e-6,
 ) -> ChannelModel:
     """Fit channel effects softly calibrated to each measured bundle effect."""
     if not 0 <= decay < 1:
         raise ValueError("decay must be between 0 and 1, not including 1")
+    if not 0 < copy_tolerance < 1:
+        raise ValueError("copy_tolerance must be between 0 and 1")
     if warn_missing:
         warn_if_impressions_missing(impressions, impression_col)
     transformed = _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay)
@@ -189,6 +198,7 @@ def fit_channel_model(
         channels,
         calibrate=calibrate,
         calibration_scale=calibration_scale,
+        copy_tolerance=copy_tolerance,
     )
     untested = _never_turned_off(design)
     for index, channel in enumerate(channels):
@@ -204,6 +214,58 @@ def fit_channel_model(
         exposure=pd.DataFrame(),
         cells=identified.cells,
     )
+
+
+def experiment_only_split(
+    impressions: pd.DataFrame,
+    identified: IdentifiedEstimate,
+    design: ConcurrentDesign,
+    treatment_start: str,
+    geo_col: str = "geo",
+    date_col: str = "date",
+    channel_col: str = "channel",
+    impression_col: str = "impressions",
+    decay: float = 0.0,
+) -> pd.DataFrame:
+    """Solve channel slopes from the cell totals and the withheld impressions.
+
+    Observational market-weeks do not enter. A channel the design never
+    turns off has no column in the system and stays blank.
+    """
+    transformed = _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay)
+    channels = _channel_list(transformed, channel_col)
+    wide = _wide(transformed, geo_col, date_col, channel_col, impression_col, channels)
+    withheld = _withheld(wide, design, channels, geo_col, date_col, treatment_start)
+    effects = identified.cells.set_index("cell")
+    present = set(withheld["cell"].astype(str))
+    width = []
+    target = []
+    weight = []
+    for cell in effects.index:
+        if str(cell) not in present:
+            continue
+        group = withheld.loc[withheld["cell"].astype(str) == str(cell)].set_index("channel")
+        width.append(
+            [float(group.loc[channel, "withheld"]) if channel in group.index else 0.0 for channel in channels]
+        )
+        target.append(-float(effects.loc[cell, "coef"]))
+        weight.append(1.0 / max(float(effects.loc[cell, "std_err"]), 1e-8) ** 2)
+    beta = np.full(len(channels), np.nan)
+    se_hat = np.full(len(channels), np.nan)
+    if width:
+        matrix = np.asarray(width, dtype=float)
+        alive = [index for index in range(len(channels)) if np.max(np.abs(matrix[:, index])) > 0]
+        if alive:
+            used = matrix[:, alive]
+            scale = np.sqrt(np.asarray(weight, dtype=float))
+            xtwx = (used * scale[:, None]).T @ (used * scale[:, None])
+            xtwy = (used * scale[:, None]).T @ (np.asarray(target, dtype=float) * scale)
+            fitted = np.linalg.lstsq(xtwx, xtwy, rcond=1e-8)[0]
+            covariance = np.linalg.pinv(xtwx, rcond=1e-8)
+            for cursor, index in enumerate(alive):
+                beta[index] = fitted[cursor]
+                se_hat[index] = float(np.sqrt(max(covariance[cursor, cursor], 0.0)))
+    return pd.DataFrame({"channel": channels, "coef": beta, "std_err": se_hat})
 
 
 def _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay: float) -> pd.DataFrame:
@@ -327,6 +389,7 @@ def _fit_weighted(
     channels,
     calibrate: bool = True,
     calibration_scale: float = 1.0,
+    copy_tolerance: float = 1e-6,
 ):
     sigma2 = _observational_variance(obs_x, obs_y)
     x_rows = []
@@ -359,6 +422,7 @@ def _fit_weighted(
         x * np.sqrt(w)[:, None],
         channels,
         copy_x=obs_x,
+        copy_tolerance=copy_tolerance,
     )
     beta = np.full(len(channels), np.nan)
     se_hat = np.full(len(channels), np.nan)
@@ -393,6 +457,7 @@ def _select_columns(
     weighted_x: np.ndarray,
     channels: list[str],
     copy_x: np.ndarray | None = None,
+    copy_tolerance: float = 1e-6,
 ):
     """Choose reported slopes, and one control column for each copied pair.
 
@@ -435,7 +500,7 @@ def _select_columns(
                 )
             else:
                 continue
-            if abs(cosine) > 1 - 1e-6:
+            if abs(cosine) > 1 - copy_tolerance:
                 parent[find(second)] = find(first)
     groups: dict[int, list[int]] = {}
     for index in alive:
@@ -600,6 +665,7 @@ def _mark_unstable(
     channel_col,
     impression_col,
     decay,
+    copy_tolerance: float = 1e-6,
 ) -> pd.DataFrame:
     """Refit under a weaker calibration weight and without one market."""
     variants = [
@@ -617,6 +683,7 @@ def _mark_unstable(
             decay=decay,
             calibration_scale=0.25,
             warn_missing=False,
+            copy_tolerance=copy_tolerance,
         )
     ]
     geo = _influential_geo(outcomes, design, treatment_start, outcome, geo_col, date_col)
@@ -635,6 +702,7 @@ def _mark_unstable(
                 impression_col=impression_col,
                 decay=decay,
                 warn_missing=False,
+                copy_tolerance=copy_tolerance,
             )
         )
     marked = channels.copy()

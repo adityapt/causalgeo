@@ -19,5 +19,5 @@ jobs:
         run: python -m pip install -e ".[dev,paper]"
       - name: Test
         run: python -m pytest
-      - name: Reproduce the manuscript
-        run: python paper/reproduce.py
+      - name: Reproduce the manuscript scripts
+        run: python paper/reproduce.py --fast

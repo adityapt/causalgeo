@@ -1,7 +1,7 @@
 [project]
 name = "causalgeo"
-version = "0.1.0"
-description = "Geo experiment analysis: go-dark, holdback, and heavy-up lift (ATT, percent lift, iCPD)."
+version = "0.2.0"
+description = "Channel effects from concurrent geo holdouts: bundle experiments, a model-assisted split, and a reported gap."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

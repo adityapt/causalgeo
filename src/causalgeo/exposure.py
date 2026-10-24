@@ -107,14 +107,19 @@ def _exposure_check(
     start = pd.Timestamp(treatment_start)
     pre = panel["date"] < start
     effects = identified.cells.set_index("cell")["coef"]
+    media_columns = [
+        channel
+        for channel in panel.columns
+        if channel not in {geo_col, date_col, outcome, "cell"}
+    ]
+    slopes = _pre_slopes(panel.loc[pre], outcome, media_columns, geo_col, date_col, media_columns)
     rows = []
     for cell, label in bundles.items():
         dark_channels = set(label.split("+")) if label else set()
-        still_on = [channel for channel in panel.columns if channel not in {geo_col, date_col, outcome, "cell", *dark_channels}]
+        still_on = [channel for channel in media_columns if channel not in dark_channels]
         for channel in still_on:
             shift = _impression_shift(panel, channel, cell, start)
-            slope = _pre_slope(panel.loc[pre], outcome, channel, geo_col, date_col)
-            sales_shift = slope * shift
+            sales_shift = slopes[channel] * shift
             bundle_effect = float(effects[cell]) if cell in effects.index else float("nan")
             outcome_scale = float(panel.loc[pre, outcome].std(ddof=1))
             scale = max(abs(bundle_effect), outcome_scale, 1e-8)
@@ -182,17 +187,32 @@ def _impression_shift(panel: pd.DataFrame, channel: str, cell: str, start: pd.Ti
     return (mean(cell, True) - mean(cell, False)) - (mean("control", True) - mean("control", False))
 
 
-def _pre_slope(pre: pd.DataFrame, outcome: str, channel: str, geo_col: str, date_col: str) -> float:
-    if pre.empty or pre[channel].std() < 1e-8:
-        return 0.0
-    y = pre[outcome].astype(float)
-    x = pre[channel].astype(float)
-    for key in (geo_col, date_col):
-        y = y - y.groupby(pre[key]).transform("mean")
-        x = x - x.groupby(pre[key]).transform("mean")
-    y = y + pre[outcome].mean()
-    x = x + pre[channel].mean()
-    denom = float(np.dot(x, x))
-    if denom < 1e-8:
-        return 0.0
-    return float(np.dot(x, y) / denom)
+def _pre_slopes(
+    pre: pd.DataFrame,
+    outcome: str,
+    channels: list[str],
+    geo_col: str,
+    date_col: str,
+    controls: list[str],
+) -> dict[str, float]:
+    """Value still-on shifts at the joint pre-test slope, not a one-channel slope."""
+    from causalgeo.panel_ols import _twoway_demean
+
+    slopes = {channel: 0.0 for channel in channels}
+    columns = [channel for channel in controls if channel in pre.columns]
+    if pre.empty or not columns:
+        return slopes
+    work = pre[[geo_col, date_col, outcome, *columns]].dropna()
+    if len(work) <= len(columns) + 1:
+        return slopes
+    demeaned = _twoway_demean(work, geo_col, date_col, [outcome, *columns])
+    y = demeaned[outcome].to_numpy(dtype=float)
+    x = demeaned[columns].to_numpy(dtype=float)
+    alive = [index for index in range(len(columns)) if float(np.std(x[:, index])) > 1e-8]
+    if not alive:
+        return slopes
+    fitted = np.linalg.lstsq(x[:, alive], y, rcond=1e-8)[0]
+    found = {columns[index]: float(coef) for index, coef in zip(alive, fitted)}
+    for channel in channels:
+        slopes[channel] = found.get(channel, 0.0)
+    return slopes

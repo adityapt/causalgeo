@@ -51,6 +51,13 @@ def _score(result, slopes) -> dict:
         )
     return {
         "median_abs_error_pct": float(np.median(errors)) if errors else np.nan,
+        "max_abs_error_pct": float(np.max(errors)) if errors else np.nan,
+        "median_se": float(np.median([
+            float(fitted.loc[channel, "std_err"])
+            for channel, planted in slopes.items()
+            if str(fitted.loc[channel, "status"]) in {"separate", "unstable"}
+            and np.isfinite(fitted.loc[channel, "coef"])
+        ])) if errors else np.nan,
         "coverage": float(np.mean(covered)) if covered else np.nan,
         "reported": len(errors),
         "median_abs_bundle_gap_pct": float((gap / measured * 100).median()),
@@ -88,9 +95,23 @@ def _mutate(kind: str, design, outcomes, impressions, start, slopes, seed: int):
         impressions, outcomes = _move_budget(impressions, outcomes, design, start, slopes)
     elif kind == "incomplete":
         impressions, outcomes = _partial_holdout(impressions, outcomes, design, start, slopes)
+    elif kind == "confounded":
+        raise ValueError("the confounder is applied before this mutation")
     else:
         raise ValueError(kind)
     return outcomes, impressions
+
+
+def _confound(outcomes: pd.DataFrame, bau: pd.DataFrame, slopes: dict[str, float]) -> pd.DataFrame:
+    """Add a shock that tracks Channel0's business-as-usual path.
+
+    The holdout zeros the measured impressions. The shock does not turn off,
+    so the observational slope absorbs it and the cell contrast does not.
+    """
+    path = bau.loc[bau["channel"] == "Channel0", ["geo", "date", "impressions"]]
+    updated = outcomes.merge(path, on=["geo", "date"], how="left")
+    updated["sales"] = updated["sales"] + 0.5 * slopes["Channel0"] * updated["impressions"].fillna(0)
+    return updated.drop(columns="impressions")
 
 
 def _apply_sales(before, after, outcomes, slopes):
@@ -160,6 +181,63 @@ def _run_one(task: tuple[str, int]) -> dict:
     from causalgeo.calibrated import fit_channel_model
     from causalgeo.identified import estimate_identified
 
+    if kind == "collinear_weak":
+        design, outcomes, impressions, start, slopes = _panel(_RAW, seed, 0.05, 0.999)
+        identified = estimate_identified(design, outcomes, outcome="sales", treatment_start=start)
+        observational = fit_channel_model(
+            outcomes, impressions, identified, design, start, "sales", calibrate=False
+        )
+        calibrated = fit_channel_model(
+            outcomes, impressions, identified, design, start, "sales", calibrate=True
+        )
+        left = _score(observational, slopes)
+        right = _score(calibrated, slopes)
+        return {
+            "scenario": "collinear_weak",
+            "seed": seed,
+            **{f"observational_{key}": value for key, value in left.items()},
+            **{f"calibrated_{key}": value for key, value in right.items()},
+        }
+    if kind == "confounded":
+        design, outcomes, impressions, start, slopes, bau, _correlation = _panel(
+            _RAW, seed, 1.0, 0.0, return_bau=True
+        )
+        outcomes = _confound(outcomes, bau, slopes)
+        result = disentangle(
+            design,
+            outcomes,
+            impressions,
+            outcome="sales",
+            treatment_start=start,
+            adjust_exposure=True,
+            check_stability=False,
+        )
+        identified = estimate_identified(design, outcomes, outcome="sales", treatment_start=start)
+        observational = fit_channel_model(
+            outcomes, impressions, identified, design, start, "sales", calibrate=False
+        )
+        scored = _score(result, slopes)
+        observed = _score(observational, slopes)
+        return {
+            "scenario": "confounded",
+            "seed": seed,
+            **scored,
+            "observational_median_abs_error_pct": observed["median_abs_error_pct"],
+            "observational_max_abs_error_pct": observed["max_abs_error_pct"],
+            "observational_coverage": observed["coverage"],
+        }
+    if kind == "experiment_only":
+        from causalgeo.calibrated import experiment_only_split
+
+        design, outcomes, impressions, start, slopes = _panel(_RAW, seed, 1.0, 0.0)
+        identified = estimate_identified(design, outcomes, outcome="sales", treatment_start=start)
+        alone = experiment_only_split(impressions, identified, design, start)
+        alone["status"] = np.where(np.isfinite(alone["coef"]), "separate", "not tested")
+        fake = type("Fit", (), {})()
+        fake.channels = alone
+        fake.bundles = pd.DataFrame({"gap": [np.nan], "measured_effect": [np.nan]})
+        scored = _score(fake, slopes)
+        return {"scenario": "experiment_only", "seed": seed, **scored}
     design, outcomes, impressions, start, slopes = _panel(_RAW, seed, 1.0, 0.0)
     if kind == "calibration":
         identified = estimate_identified(design, outcomes, outcome="sales", treatment_start=start)
@@ -172,7 +250,7 @@ def _run_one(task: tuple[str, int]) -> dict:
         left = _score(observational, slopes)
         right = _score(calibrated, slopes)
         return {
-            "scenario": "observational_only",
+            "scenario": "calibration",
             "seed": seed,
             **{f"observational_{key}": value for key, value in left.items()},
             **{f"calibrated_{key}": value for key, value in right.items()},
@@ -200,6 +278,9 @@ def main() -> pd.DataFrame:
             "redistribution_adjusted",
             "incomplete",
             "calibration",
+            "confounded",
+            "collinear_weak",
+            "experiment_only",
         )
         for seed in SEEDS
     ]
@@ -215,40 +296,66 @@ def main() -> pd.DataFrame:
     return summary
 
 
+def _interval(values: pd.Series) -> tuple[float, float]:
+    clean = values.dropna()
+    if len(clean) < 2:
+        return float("nan"), float("nan")
+    center = float(clean.mean())
+    half = 1.96 * float(clean.std(ddof=1) / np.sqrt(len(clean)))
+    return max(0.0, center - half), min(1.0, center + half)
+
+
 def summarize(detail: pd.DataFrame) -> pd.DataFrame:
     rows = []
     ordinary = detail.dropna(subset=["median_abs_error_pct"]) if "median_abs_error_pct" in detail else detail.iloc[0:0]
     for scenario, group in ordinary.groupby("scenario"):
+        cover_low, cover_high = _interval(group["coverage"])
         rows.append(
             {
                 "scenario": scenario,
                 "runs": int(len(group)),
                 "median_abs_error_pct": round(float(group["median_abs_error_pct"].median()), 2),
+                "max_abs_error_pct": round(float(group["max_abs_error_pct"].median()), 2),
+                "median_se": round(float(group["median_se"].median()), 6),
                 "coverage": round(float(group["coverage"].mean()), 3),
+                "coverage_mc_lower": round(cover_low, 3),
+                "coverage_mc_upper": round(cover_high, 3),
                 "median_abs_bundle_gap_pct": round(float(group["median_abs_bundle_gap_pct"].median()), 2),
-                "median_abs_reallocation_pct": round(float(group["median_abs_reallocation_pct"].median()), 2),
+                "median_abs_reallocation_pct": round(float(group["median_abs_reallocation_pct"].median()), 2)
+                if group["median_abs_reallocation_pct"].notna().any()
+                else np.nan,
+                "observational_max_abs_error_pct": round(float(group["observational_max_abs_error_pct"].median()), 2)
+                if "observational_max_abs_error_pct" in group and group["observational_max_abs_error_pct"].notna().any()
+                else np.nan,
             }
         )
-    calibration = detail.dropna(subset=["calibrated_median_abs_error_pct"]) if "calibrated_median_abs_error_pct" in detail else detail.iloc[0:0]
-    if len(calibration):
-        rows.append(
-            {
-                "scenario": "observational_only",
-                "runs": int(len(calibration)),
-                "median_abs_error_pct": round(float(calibration["observational_median_abs_error_pct"].median()), 2),
-                "coverage": round(float(calibration["observational_coverage"].mean()), 3),
-                "median_abs_bundle_gap_pct": round(float(calibration["observational_median_abs_bundle_gap_pct"].median()), 2),
-            }
-        )
-        rows.append(
-            {
-                "scenario": "calibrated",
-                "runs": int(len(calibration)),
-                "median_abs_error_pct": round(float(calibration["calibrated_median_abs_error_pct"].median()), 2),
-                "coverage": round(float(calibration["calibrated_coverage"].mean()), 3),
-                "median_abs_bundle_gap_pct": round(float(calibration["calibrated_median_abs_bundle_gap_pct"].median()), 2),
-            }
-        )
+    paired = detail.dropna(subset=["calibrated_median_abs_error_pct"]) if "calibrated_median_abs_error_pct" in detail else detail.iloc[0:0]
+    for scenario, group in paired.groupby("scenario"):
+        if scenario in {"calibration", "observational_only"}:
+            labels = (
+                ("observational_only", "observational"),
+                ("calibrated", "calibrated"),
+            )
+        else:
+            labels = (
+                (f"{scenario}_observational", "observational"),
+                (f"{scenario}_calibrated", "calibrated"),
+            )
+        for name, prefix in labels:
+            cover_low, cover_high = _interval(group[f"{prefix}_coverage"])
+            rows.append(
+                {
+                    "scenario": name,
+                    "runs": int(len(group)),
+                    "median_abs_error_pct": round(float(group[f"{prefix}_median_abs_error_pct"].median()), 2),
+                    "max_abs_error_pct": round(float(group[f"{prefix}_max_abs_error_pct"].median()), 2),
+                    "median_se": round(float(group[f"{prefix}_median_se"].median()), 6),
+                    "coverage": round(float(group[f"{prefix}_coverage"].mean()), 3),
+                    "coverage_mc_lower": round(cover_low, 3),
+                    "coverage_mc_upper": round(cover_high, 3),
+                    "median_abs_bundle_gap_pct": round(float(group[f"{prefix}_median_abs_bundle_gap_pct"].median()), 2),
+                }
+            )
     return pd.DataFrame(rows)
 
 

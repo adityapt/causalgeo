@@ -1,4 +1,4 @@
 channel,status,coef,reason
 Channel0,tied,,Channel0 moves with Channel1; their shared path is controlled for and is not split into a channel slope
 Channel1,tied,,Channel1 moves with Channel0; their shared path is controlled for and is not split into a channel slope
-Channel2,separate,9.68224727165112e-05,
+Channel2,separate,9.682291591095849e-05,

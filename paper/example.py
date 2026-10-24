@@ -15,7 +15,8 @@ from urllib.request import urlretrieve
 import numpy as np
 import pandas as pd
 
-from causalgeo import design_concurrent_test, disentangle
+from causalgeo import design_concurrent_test, disentangle, experiment_only_split
+from causalgeo.identified import estimate_identified
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data" / "geo_all_channels.csv"
@@ -166,12 +167,23 @@ def main() -> None:
         adjust_exposure=True,
         check_stability=False,
     )
+    identified = estimate_identified(design, outcomes, outcome="sales", treatment_start=treatment_start)
+    alone = experiment_only_split(
+        impressions[["geo", "date", "channel", "impressions"]],
+        identified,
+        design,
+        treatment_start,
+    )
     slopes = slope_table(result)
+    alone = alone.merge(slopes[["channel", "planted"]], on="channel", how="left")
+    alone["per_10000"] = alone["coef"] * 1e4
+    alone["se_per_10000"] = alone["std_err"] * 1e4
     exposure = result.exposure.loc[result.exposure["adjust"], ["cell", "channel", "impression_shift", "sales_shift", "share"]]
     design.separation.to_csv(OUT / "separation.csv", index=False)
     result.bundles.to_csv(OUT / "bundles.csv", index=False)
     result.cells.to_csv(OUT / "cells.csv", index=False)
     slopes.to_csv(OUT / "slopes.csv", index=False)
+    alone.to_csv(OUT / "experiment_only.csv", index=False)
     result.exposure.to_csv(OUT / "exposure.csv", index=False)
     tied = tied_case(outcomes, impressions, design, treatment_start)
     tied.to_csv(OUT / "tied.csv", index=False)
@@ -190,6 +202,7 @@ def main() -> None:
     print(design.separation.to_string(index=False))
     print(result.bundles.to_string(index=False))
     print(slopes.to_string(index=False))
+    print(alone.to_string(index=False))
     print(exposure.to_string(index=False))
     print(tied.to_string(index=False))
 

@@ -1,9 +1,12 @@
 setting,coverage,gap
 Linear,0.967,2.13
-Serial correlation,0.956,3.09
-Incomplete delivery,0.967,3.84
-Heterogeneous slopes,0.356,4.27
+Serial correlation,0.956,3.56
+Incomplete delivery,0.967,2.83
+Heterogeneous slopes,0.344,4.01
 Budget moved,0.967,12.6
 "Budget moved, refit",0.967,12.6
-Carryover omitted,0.0,48.08983191462639
-Saturation omitted,0.0,28.921985383542264
+Confounded channel,0.644,21.12
+"Collinear, observational",0.956,43.33
+"Collinear, calibrated",0.989,8.79
+Carryover omitted,0.0,48.08726862943415
+Saturation omitted,0.0,26.969866532816205

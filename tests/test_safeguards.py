@@ -6,9 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from causalgeo import bootstrap_channel_intervals, compare_calibration
+from causalgeo import bootstrap_channel_intervals, compare_calibration, design_from_assignment, experiment_only_split
 from causalgeo.calibrated import disentangle
 from causalgeo.design import ConcurrentDesign, design_concurrent_test
+from causalgeo.exposure import _pre_slopes
 from causalgeo.identified import estimate_identified
 
 
@@ -232,6 +233,51 @@ def test_bootstrap_intervals_refit_whole_market_histories():
     assert not reported.empty
     assert (reported["ci_lower"] < reported["ci_upper"]).all()
     assert (reported["draws"] >= 2).all()
+
+
+def test_an_existing_assignment_can_be_used():
+    drawn = _design()
+    rebuilt = design_from_assignment(
+        drawn.assignment,
+        channels=["Facebook", "Search"],
+        bundles=[["Facebook"], ["Search"]],
+    )
+    assert list(rebuilt.assignment["cell"]) == list(drawn.assignment["cell"])
+    outcomes, impressions = _panel(rebuilt)
+    result = disentangle(
+        rebuilt,
+        outcomes,
+        impressions,
+        outcome="sales",
+        treatment_start="2025-01-21",
+        check_stability=False,
+    )
+    assert set(result.cells["cell"]) == {"1", "2"}
+
+
+def test_the_still_on_slope_controls_for_the_other_channel():
+    rng = np.random.default_rng(0)
+    rows = []
+    for geo in range(8):
+        for day in range(30):
+            facebook = 5.0 + float(rng.normal(0, 0.2))
+            search = facebook + float(rng.normal(0, 0.2))
+            sales = 0.4 * facebook + 0.3 * search
+            rows.append({"geo": geo, "date": day, "sales": sales, "Facebook": facebook, "Search": search})
+    pre = pd.DataFrame(rows)
+    slopes = _pre_slopes(pre, "sales", ["Facebook", "Search"], "geo", "date", ["Facebook", "Search"])
+    assert abs(slopes["Facebook"] - 0.4) < 0.05
+    assert abs(slopes["Search"] - 0.3) < 0.05
+
+
+def test_experiment_only_split_uses_the_cell_totals():
+    design = _design()
+    outcomes, impressions = _panel(design)
+    identified = estimate_identified(design, outcomes, outcome="sales", treatment_start="2025-01-21")
+    alone = experiment_only_split(impressions, identified, design, "2025-01-21")
+    found = alone.set_index("channel")
+    assert np.isfinite(found.loc["Facebook", "coef"])
+    assert np.isfinite(found.loc["Search", "std_err"])
 
 
 def test_a_small_shift_does_not_trigger_when_the_bundle_effect_is_near_zero():

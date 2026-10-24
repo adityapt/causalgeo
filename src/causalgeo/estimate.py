@@ -58,10 +58,9 @@ def _twoway_demean(
     time: str,
     columns: list[str],
 ) -> pd.DataFrame:
-    entity_means = frame.groupby(entity)[columns].transform("mean")
-    time_means = frame.groupby(time)[columns].transform("mean")
-    grand = frame[columns].mean()
-    return frame[columns] - entity_means - time_means + grand
+    from causalgeo.panel_ols import _twoway_demean as _demean
+
+    return _demean(frame, entity, time, columns)
 
 
 def _incremental_spend(panel: pd.DataFrame, spend_col: Optional[str]) -> Optional[float]:

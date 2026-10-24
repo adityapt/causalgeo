@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Sequence, Union
 
+import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
@@ -56,10 +57,16 @@ def _twoway_demean(
     columns: Sequence[str],
 ) -> pd.DataFrame:
     cols = list(columns)
-    entity_means = frame.groupby(entity_col)[cols].transform("mean")
-    time_means = frame.groupby(time_col)[cols].transform("mean")
-    grand = frame[cols].mean()
-    return frame[cols] - entity_means - time_means + grand
+    out = frame[cols].astype(float).copy()
+    # One subtraction is exact only when every market is observed every period.
+    # On an unbalanced panel, repeat until the market and period means are gone.
+    for _ in range(200):
+        previous = out.to_numpy()
+        out = out - out.groupby(frame[entity_col]).transform("mean")
+        out = out - out.groupby(frame[time_col]).transform("mean")
+        if np.max(np.abs(out.to_numpy() - previous)) < 1e-12:
+            break
+    return out
 
 
 def _fit_twoway_clustered(

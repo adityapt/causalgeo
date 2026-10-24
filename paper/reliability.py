@@ -27,13 +27,13 @@ from example import (
 from causalgeo import design_concurrent_test, disentangle
 
 OUT = Path(__file__).resolve().parent / "results"
-SCALES = (1.0, 0.25)
+NOISE_FACTORS = (1.0, 4.0)
 RHOS = (0.0, 0.9, 1.0)
 SEEDS = range(200)
 _RAW: pd.DataFrame | None = None
 
 
-def _panel(raw: pd.DataFrame, seed: int, scale: float, rho: float):
+def _panel(raw: pd.DataFrame, seed: int, scale: float, rho: float, noise_factor: float = 1.0, return_bau: bool = False):
     weeks = np.sort(raw["time"].unique())
     treatment_start = pd.Timestamp(weeks[-TEST_WEEKS]).strftime("%Y-%m-%d")
     means = raw.groupby("geo")["conversions"].mean()
@@ -73,6 +73,9 @@ def _panel(raw: pd.DataFrame, seed: int, scale: float, rho: float):
         impressions = impressions.drop(columns="mixed")
     # Correlate the untreated paths first. Applying the assignments afterward
     # avoids making one channel's holdout change a channel that stayed on.
+    untreated = impressions.pivot(index=["geo", "date"], columns="channel", values="impressions")
+    correlation = float(untreated["Channel0"].corr(untreated["Channel1"]))
+    bau = impressions[["geo", "date", "channel", "impressions"]].copy()
     impressions.loc[post & pd.Series(dark, index=impressions.index), "impressions"] = 0.0
     wide = impressions.pivot_table(
         index=["geo", "date"], columns="channel", values="impressions", aggfunc="sum"
@@ -83,8 +86,22 @@ def _panel(raw: pd.DataFrame, seed: int, scale: float, rho: float):
     date_fe = dict(zip(dates, rng.normal(0, 20, len(dates))))
     slopes = {channel: SLOPES[channel] * scale for channel in CHANNELS}
     signal = sum(slopes[channel] * wide[channel] for channel in CHANNELS)
-    wide["sales"] = wide["geo"].map(geo_fe) + wide["date"].map(date_fe) + signal + rng.normal(0, NOISE_SD, len(wide))
-    return design, wide[["geo", "date", "sales"]], impressions[["geo", "date", "channel", "impressions"]], treatment_start, slopes
+    wide["sales"] = (
+        wide["geo"].map(geo_fe)
+        + wide["date"].map(date_fe)
+        + signal
+        + rng.normal(0, NOISE_SD * noise_factor, len(wide))
+    )
+    packed = (
+        design,
+        wide[["geo", "date", "sales"]],
+        impressions[["geo", "date", "channel", "impressions"]],
+        treatment_start,
+        slopes,
+    )
+    if return_bau:
+        return *packed, bau, correlation
+    return packed
 
 
 def _init_worker() -> None:
@@ -93,10 +110,12 @@ def _init_worker() -> None:
 
 
 def _run_one(task: tuple[float, float, int]) -> list[dict]:
-    scale, rho, seed = task
+    noise_factor, rho, seed = task
     if _RAW is None:
         raise RuntimeError("simulation worker has no media data")
-    design, outcomes, impressions, start, slopes = _panel(_RAW, seed, scale, rho)
+    design, outcomes, impressions, start, slopes, _bau, correlation = _panel(
+        _RAW, seed, 1.0, rho, noise_factor=noise_factor, return_bau=True
+    )
     result = disentangle(
         design,
         outcomes,
@@ -115,8 +134,9 @@ def _run_one(task: tuple[float, float, int]) -> list[dict]:
         covered = bool(status == "separate" and abs(estimate - planted) <= 1.96 * se)
         rows.append(
             {
-                "scale": scale,
+                "noise": noise_factor,
                 "rho": rho,
+                "correlation": correlation,
                 "seed": seed,
                 "channel": channel,
                 "status": status,
@@ -132,8 +152,8 @@ def _run_one(task: tuple[float, float, int]) -> list[dict]:
 
 def main() -> None:
     tasks = [
-        (scale, rho, seed)
-        for scale in SCALES
+        (noise_factor, rho, seed)
+        for noise_factor in NOISE_FACTORS
         for rho in RHOS
         for seed in SEEDS
     ]
@@ -148,7 +168,7 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     detail.to_csv(OUT / "reliability_detail.csv", index=False)
     summary = []
-    for (scale, rho), group in detail.groupby(["scale", "rho"]):
+    for (noise_factor, rho), group in detail.groupby(["noise", "rho"]):
         separate = group.loc[group["status"] == "separate"]
         copies = group.loc[group["channel"].isin(["Channel0", "Channel1"])]
         run_coverage = separate.groupby("seed")["covered"].mean()
@@ -156,8 +176,9 @@ def main() -> None:
         coverage_mcse = float(run_coverage.std(ddof=1) / np.sqrt(len(run_coverage)))
         summary.append(
             {
-                "scale": scale,
+                "noise": noise_factor,
                 "rho": rho,
+                "correlation": float(group["correlation"].mean()),
                 "runs": int(group["seed"].nunique()),
                 "median_abs_pct_error": float(separate["abs_pct_error"].median()),
                 "coverage": coverage,

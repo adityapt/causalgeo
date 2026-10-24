@@ -8,21 +8,14 @@
     "3": 8,
     "control": 16
   },
-  "max_abs_pct_error": 0.20746152395504616,
+  "max_abs_pct_error": 0.20876085159637556,
   "adjustments": [
-    {
-      "cell": "1",
-      "channel": "Channel2",
-      "impression_shift": 120947.87232142859,
-      "sales_shift": 70.16777773636443,
-      "share": 0.126269738975263
-    },
     {
       "cell": "2",
       "channel": "Channel1",
       "impression_shift": -118115.42276785715,
-      "sales_shift": -83.23323022653052,
-      "share": 0.19994773803361351
+      "sales_shift": -59.14577824480671,
+      "share": 0.14208345082968152
     }
   ]
 }

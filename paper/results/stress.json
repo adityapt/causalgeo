@@ -3,30 +3,30 @@
     "scenario":"carryover_omitted",
     "label":"Carryover omitted",
     "runs":200,
-    "median_abs_contribution_error_pct":47.2568952449,
+    "median_abs_contribution_error_pct":47.266739266,
     "coverage":0.0,
     "coverage_mc_lower":0.0,
     "coverage_mc_upper":0.0,
-    "median_abs_bundle_gap_pct":48.0898319146
+    "median_abs_bundle_gap_pct":48.0872686294
   },
   {
     "scenario":"carryover_modeled",
     "label":"Carryover modeled",
     "runs":200,
-    "median_abs_contribution_error_pct":0.1904859768,
-    "coverage":0.9433333333,
-    "coverage_mc_lower":0.9241760782,
-    "coverage_mc_upper":0.9624905885,
-    "median_abs_bundle_gap_pct":1.0291057374
+    "median_abs_contribution_error_pct":0.1908038055,
+    "coverage":0.9416666667,
+    "coverage_mc_lower":0.9223269375,
+    "coverage_mc_upper":0.9610063959,
+    "median_abs_bundle_gap_pct":2.2205003497
   },
   {
     "scenario":"saturation_omitted",
     "label":"Saturation omitted",
     "runs":200,
-    "median_abs_contribution_error_pct":27.0036555686,
+    "median_abs_contribution_error_pct":26.989749165,
     "coverage":0.0,
     "coverage_mc_lower":0.0,
     "coverage_mc_upper":0.0,
-    "median_abs_bundle_gap_pct":28.9219853835
+    "median_abs_bundle_gap_pct":26.9698665328
   }
 ]
