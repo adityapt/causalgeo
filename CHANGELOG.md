@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `examples/public_allocation_benchmark.py` scores the allocation on Google's public Meridian geo panel.
+- `anchored_channel_allocation` divides a measured bundle effect by prevented effective dose and reports potency sensitivity separately from the experimental interval.
+- `prevented_effective_dose` builds that dose from impressions, quality, reach and frequency, carryover, or saturation.
+- `bayesian_channel_allocation` updates a joint MMM prior with measured bundle effects and reports how many channel directions remain prior-driven.
+- `bundle_impression_contrasts` exposes the off-channel exposure loss used by the bundle equations.
+
 ## 0.2.0 — 2026-10-23
 
 - The concurrent cell estimate stays unadjusted unless `adjust_exposure=True`. A still-on impression shift is removed from the total before the channel split.

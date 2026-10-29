@@ -11,6 +11,13 @@
 \Urlmuskip=0mu\relax
 \usepackage[hidelinks]{hyperref}
 \makeatletter
+% The preprint option stamps "Preprint submitted to SoftwareX" and today's
+% date. That date is the compile date. The manuscript has not been submitted.
+\def\ps@pprintTitle{%
+  \let\@oddhead\@empty
+  \let\@evenhead\@empty
+  \let\@oddfoot\@empty
+  \let\@evenfoot\@empty}
 % Break a URL after a slash or a hyphen. Do not break between the two
 % slashes of https://, and do not break inside a word.
 \newcommand{\metaurl}[1]{\href{#1}{\ttfamily\metaurl@break#1/\@nil}}
@@ -44,7 +51,7 @@
 
 \begin{frontmatter}
 
-\title{causalgeo: channel effects from concurrent geo holdouts}
+\title{causalgeo: concurrent geo holdouts for bundle lift and calibrated channel responses}
 
 \author[aff1]{Aditya Puttaparthi Tirumala\corref{cor1}}
 \ead{puttaparthy.aditya@gmail.com}
@@ -52,9 +59,9 @@
 \address[aff1]{Independent Researcher}
 
 \begin{abstract}
-Marketing teams sometimes turn off different bundles of media channels in different groups of markets at the same time. These geo holdouts measure each bundle's incremental effect, but not how that effect should be divided among its channels. Existing geo tools stop at the bundle. Marketing-mix models can split it, but the answer is unstable when channels move together.
+Marketing teams sometimes turn off different bundles of channels in different groups of markets at the same time. A geo holdout estimates the lift of each bundle. It does not say how to split that lift across the channels inside the bundle. Existing geo tools stop at the bundle. A marketing-mix model can split it, but the split is unstable when the channels move together.
 
-\texttt{causalgeo} assigns markets to concurrent cells, or takes an assignment the user already has. It estimates each bundle from the holdout, checks whether a channel split is supported, pulls channel slopes toward the measured totals, reports the gap, and withholds slopes the data cannot separate. One constructed series recovers the slopes within 0.21 percent. That series is the linear model the package fits. Across 200 draws the median error is 0.19 percent, and 0.76 percent at four times the noise, with coverage staying at 95.8 percent. A confounder the holdout does not turn off leaves a slope 50 percent high. When two channels are nearly copies and the effects are small, calibration lowers the median error from 44.6 percent to 10.5 percent. Omitted carryover or saturation still breaks the linear split.
+\texttt{causalgeo} is a package for concurrent geo holdouts that reports bundle lift, uses impression paths for a model-assisted channel split, and refuses channel estimates that the design cannot distinguish. One bundled test estimates that bundle's total lift. It does not estimate how many sales each channel's impressions were worth. On one constructed series the recovered responses are within 0.21 percent of the known values.
 \end{abstract}
 
 \begin{keyword}
@@ -76,7 +83,7 @@ C1 & Current code version & 0.2.0 \\
 \hline
 C2 & Permanent link to code/repository used for this code version & \metaurl{https://github.com/adityapt/causalgeo/releases/tag/v0.2.0} \\
 \hline
-C3 & Permanent link to Reproducible Capsule & \metaurl{https://github.com/adityapt/causalgeo/blob/v0.2.0/paper/reproduce.py} \\
+C3 & Permanent link to Reproducible Capsule & \metaurl{https://doi.org/10.5281/zenodo.23608832} \\
 \hline
 C4 & Legal Code License & MIT \\
 \hline
@@ -96,13 +103,15 @@ C9 & Support email for questions & puttaparthy.aditya@gmail.com \\
 \section{Motivation and significance}
 \label{sec:motivation}
 
-Geo experiments estimate incremental impact by comparing markets assigned to a media change with similar control markets \cite{vaver2011,vaver2012}. This avoids the bias in comparing people who saw an ad with people who did not \cite{lewis2011,gordon2019}. It answers a simple question: did the channel create incremental sales? \cite{blake2015}.
+\texttt{causalgeo} is a package for concurrent geo holdouts that reports bundle lift, uses impression paths for a model-assisted channel split, and refuses channel estimates that the design cannot distinguish.
 
-The number of markets that can go dark is usually limited. Consider a United States campaign across 210 designated market areas (DMAs). The business may allow a pause in only 30: large markets may be too risky, some regions may have partner commitments, and others may already be in a campaign. Those business rules set the holdout pool before the analyst can consider balance or power. Advertising effects are small compared with sales noise \cite{lewisrao2015}, so one well-powered single-channel test can use the whole pool. Teams therefore test bundles in several cells at once. Each cell identifies a bundle effect, not the effects of the channels inside it.
+A geo test estimates incrementality by comparing markets put on a media change with similar markets left on business as usual \cite{vaver2011,vaver2012}. That comparison avoids the bias in lining up people who saw an ad with people who did not \cite{lewis2011,gordon2019}. The question is simple: did the channel create incremental sales? \cite{blake2015}.
 
-GeoLift and Meridian GeoX can design and measure more than one cell \cite{geolift,geox2026}. They do not split a cell into channels or tie a mix model to the measured cell total. Mix models estimate channel slopes from impression histories, and collinear media makes that split arbitrary \cite{chanperry2017,jin2017}. Robyn and PyMC-Marketing can pull a mix model toward a lift test, including a test of more than one channel \cite{runge2024,pymcmarketing2024}. A pull toward an experiment can stabilize a split \cite{zhang2023}. It cannot create information the test and the exposure data do not contain. The split below also assumes that a bundle effect is the sum of its channel effects. If channels interact, these equations do not name the separate slopes \cite{naik2003}.
+The number of markets that can go dark is usually limited. Take a United States campaign across 210 designated market areas (DMAs). The business may allow a pause in only 30. Large markets may be too risky, some regions may have partner commitments, and others may already be in a flight. Those rules set the holdout pool before anyone looks at balance or power. Advertising lift is small next to ordinary sales movement \cite{lewisrao2015}, so one well-powered single-channel test can use the whole pool. Teams therefore test bundles in several cells at once. Each cell estimates the bundle lift, not the lift of the channels inside it.
 
-\texttt{causalgeo} bridges the experiment and the channel model. It measures the bundle effect from the holdout, then uses that measurement to guide a linear model of channel impressions. The resulting channel slopes use both the experiment and the model; they are not direct experimental estimates. If the data cannot separate channels, the package reports the bundle instead. It does not control for test-period spend because the holdout itself changes spend \cite{angrist2009}.
+GeoLift and Meridian GeoX can design and estimate more than one cell \cite{geolift,geox2026}. They do not split a cell into channels, and they do not tie a marketing-mix model to the measured cell lift. A mix model estimates channel response from impression history, and channels that move together make that split arbitrary \cite{chanperry2017,jin2017}. Robyn and PyMC-Marketing can pull a mix model toward a lift test, including a test of more than one channel \cite{runge2024,pymcmarketing2024}. Pulling toward a test can steady a split \cite{zhang2023}. It cannot create information the test and the impression data do not contain. The split below also assumes the bundle lift is the sum of the channel lifts. If the channels interact, these equations do not name the separate responses \cite{naik2003}.
+
+The package estimates the bundle lift from the holdout, then uses that lift to guide a straight-line model of channel impressions. The channel responses use both the test and the model. They are not channel-level holdout estimates. If the impressions cannot separate the channels, the package reports the bundle and stops. It does not fill the gap with a sales-per-impression weight of its own. It does not control for in-flight spend, because going dark is what changes that spend \cite{angrist2009}.
 
 \section{Software description}
 \label{sec:software}
@@ -110,72 +119,89 @@ GeoLift and Meridian GeoX can design and measure more than one cell \cite{geolif
 \subsection{Software architecture}
 \label{sec:architecture}
 
-The concurrent workflow, exposed through \texttt{design\_concurrent\_test} and \texttt{disentangle}, has four parts.
+The workflow behind \texttt{design\_concurrent\_test} and \texttt{disentangle} has four parts.
 
 \begin{enumerate}
-\item \texttt{design.py} assigns markets within strata, builds the cell-by-channel schedule, and reports which channels are separable.
-\item \texttt{identified.py} estimates one bundle effect per cell and reports a direct channel effect only when that channel was tested alone.
-\item \texttt{exposure.py} checks whether channels that should stay on changed differently in test and control markets.
-\item \texttt{calibrated.py} fits the impression model and uses each measured bundle effect to guide the channel split.
+\item \texttt{design.py} assigns markets inside groups of similar markets, builds the cell-by-channel flight schedule, and says which channels can be split.
+\item \texttt{identified.py} estimates one bundle lift per cell, and a channel lift only when that channel was the only one turned off.
+\item \texttt{exposure.py} checks whether a channel that was supposed to stay on delivered differently in the dark markets and the business-as-usual markets.
+\item \texttt{calibrated.py} fits the impression response and uses each measured bundle lift to guide the channel split.
 \end{enumerate}
 
-Bundle effects use market and week fixed effects. Market and week means are removed iteratively, so a market that misses some weeks is handled in the same way as market and week dummies. Standard errors are clustered by market \cite{wooldridge2010,bertrand2004,cameron2015}. This example has 40 markets and 8 treated markets in each cell. On a separate panel with those sizes and 30 periods, redrawing the assignment 200 times, the nominal 95 percent intervals covered the true cell effect 91.8 percent of the time. The supporting \texttt{analyze} function also provides time-based regression \cite{kerman2017}, synthetic control \cite{abadie2010,xu2017}, and synthetic difference-in-differences \cite{arkhangelsky2021} for a single-cell test that has already been assigned. GeoLift and GeoX handle market selection and power search \cite{geolift,geox2026}.
+The bundle estimate takes out each market's own baseline and each week's common movement, repeating that removal when a market misses some weeks. The uncertainty is by market: weeks inside one market count as one market, not as separate observations \cite{wooldridge2010,bertrand2004,cameron2015}. This example has 40 markets and 8 dark markets in each cell. On a separate series of that size, over 30 weeks, redrawing the assignment 200 times, the stated 95 percent intervals covered the true cell lift 91.8 percent of the time. For a single cell that is already assigned, \texttt{analyze} can also run time-based regression \cite{kerman2017}, synthetic control \cite{abadie2010,xu2017}, or synthetic difference-in-differences \cite{arkhangelsky2021}. GeoLift and GeoX still own market selection and the power search \cite{geolift,geox2026}.
 
 \subsection{Software functionalities}
 \label{sec:function}
 
 \paragraph{Design}
-The user supplies markets, strata, channels, and the channels to turn off in each cell. Within each stratum, \texttt{control\_share} remains on; the other markets are divided among cells. \texttt{design\_from\_assignment} accepts an assignment that already exists, with the same cell labels. The schedule has $A_{kc}=1$ when cell $k$ turns channel $c$ off. The separation report calls a channel not tested, tied, separate, or not separable. A channel the design never turns off stays \texttt{not tested} and receives no slope.
+The user supplies the markets, groups of similar markets, the channel list, and which channels go dark in each cell. Inside each group, {\ttfamily control\_\allowbreak share} stays on business as usual. The other markets are split across cells. {\ttfamily design\_\allowbreak from\_\allowbreak assignment} takes a cell map that already exists, with the same cell labels. The schedule marks $A_{kc}=1$ when cell $k$ turns channel $c$ off. Each channel is then called not tested, tied, separate, or not separable. A channel the flight never turns off stays not tested and gets no response.
 
-\paragraph{Bundle effect}
-Let $D_{it}^{(k)}=1$ when market $i$ is assigned to cell $k$ and week $t$ is in the test window. The cell regression is
+\paragraph{Bundle lift}
+$D_{it}^{(k)}=1$ when market $i$ is in cell $k$ and week $t$ is in the test window. The cell estimate is
 \begin{equation}
 \label{eq:cell}
 Y_{it} = \sum_{k} \tau_{k}\, D_{it}^{(k)} + \alpha_{i} + \gamma_{t} + \varepsilon_{it}.
 \end{equation}
-$\tau_{k}$ is the cell's sales change after allowing for each market's history and common week shocks. It is a channel effect only when one channel was tested alone. Even if overlapping bundles cover all channels, a bundle coefficient does not belong to any one channel.
+$\tau_{k}$ is that cell's incremental sales, after each market's baseline and each week's common movement. It is a channel estimate only when the cell turned one channel off. Overlapping bundles can cover every channel and the bundle lift still belongs to the bundle, not to one channel inside it.
 
-\paragraph{Still-on channels}
-A channel left on in cell $k$ can still differ between the dark markets and the control. The impression shift is the difference in differences
+\paragraph{Channels left on}
+A channel left on in cell $k$ can still deliver differently in the dark markets than in the business-as-usual markets. That impression gap is
 \begin{equation}
 \label{eq:shift}
 S_{kc} = \big(\bar X_{c,k,\mathrm{post}} - \bar X_{c,k,\mathrm{pre}}\big) - \big(\bar X_{c,\mathrm{control},\mathrm{post}} - \bar X_{c,\mathrm{control},\mathrm{pre}}\big).
 \end{equation}
-The pre-test slope $b_{c}$ is the joint slope of all channels, not a regression of sales on one channel. The usual cell estimate stays $\tau_{k}$. If $|b_c S_{kc}|$ is more than \texttt{material} times the larger of $|\tau_{k}|$ and the pre-test outcome standard deviation, with \texttt{material} equal to 0.10 unless the user changes it, the channel split uses a refit that includes these still-on impressions. The user can also choose to report that refit. Turned-off channels are never controls: being off is the treatment. The example table reports the requested refit.
+The pre-test weight $b_{c}$ is the joint response of the channels, not an estimate of sales on one channel. The published cell lift stays $\tau_{k}$. If $|b_c S_{kc}|$ is more than \texttt{material} times the larger of $|\tau_{k}|$ and the usual week-to-week sales movement before the test, the channel split uses a refit that accounts for those still-on impressions. \texttt{material} is 0.10 unless the user changes it. The user can also publish that refit. Channels that were turned off are the test. They are not controls. The example table shows the requested refit.
 
 \paragraph{Channel split}
-Let $W_{kc}$ be the impressions of channel $c$ withheld in cell $k$,
+$W_{kc}$ is the impressions of channel $c$ held out of cell $k$,
 \begin{equation}
 \label{eq:withheld}
 W_{kc} = \max(-S_{kc},\, 0)
 \end{equation}
-for channels that cell $k$ turned off; all other entries in that calibration row are zero. The model should make $\sum_{c} \beta_{c} W_{kc}$ close to $-\tau_{k}$. This is a weighted observation, not a hard constraint. The impression model uses all pre-test observations and only control markets during the test; dark-market weeks are excluded. Precise bundle estimates receive more weight. The bundle table shows any remaining gap.
+for channels that cell turned off. Every other entry in that row is zero. The mix model should make $\sum_{c} \beta_{c} W_{kc}$ close to $-\tau_{k}$, where $\beta_{c}$ is sales per impression. That row is a weighted pull toward the lift test. It is not a hard constraint. The impression history uses every pre-period week, and only the business-as-usual markets during the flight. Dark market-weeks stay out of that history. A more precise bundle lift pulls harder. The bundle table shows whatever gap is left.
 
-The reported covariance is the inverse weighted cross-product. It treats bundle estimates as independent, so it does not fully account for shared controls or reused observations. The simulations assess this approximation for this example design, not every possible panel.
+The reported uncertainty treats the cell lifts as separate. It does not fully account for shared control markets or weeks that enter more than one estimate. The simulations check that shortcut on this design, not on every flight.
 
-Columns with cosine similarity above $1-\texttt{copy\_tolerance}$ are treated as copies. The default tolerance is $10^{-6}$. One copy stays in the model to account for their shared signal, but neither gets a slope. By default, a slope is marked unstable if it changes substantially when the calibration weight is reduced or when the market with the largest test-period outcome is removed. The tables below turn that check off, so the reported numbers are the point estimates. A blank impression stays blank, that market-day is dropped, and the fit warns. Daily impact is exposure times $\hat\beta_{c}$. The package offers geometric adstock but not saturation because one on/off holdout cannot trace a response curve \cite{hanssens2001,jin2017}.
+Impression paths closer than $1-\texttt{copy\_tolerance}$ are treated as copies. The default tolerance is $10^{-6}$. One copy stays in the fit so their shared delivery is not ignored, and neither copy gets its own response. By default a response is marked unstable if it moves when the calibration pull is weakened, or when the market with the largest in-flight sales is left out. The tables below turn that check off, so the numbers are the point estimates. A blank impression stays blank, that market-day is dropped, and the fit warns. Daily impact is delivered impressions times $\hat\beta_{c}$. The package can apply geometric adstock. It does not fit a saturation curve, because one on/off holdout cannot trace the response curve \cite{hanssens2001,jin2017}.
 
-The output includes channel slopes, measured and model-implied bundle effects, the exposure check, and daily impacts. A market-cluster bootstrap reruns the pipeline on markets resampled within cells.
+\paragraph{One bundle}
+One cell measures one number: the bundle lift $\tau_{k}$. The held-out impressions $W_{kc}$ say how many impressions of each channel were removed. They do not say how many incremental sales each removed impression was worth. Call that unknown weight $p_{c}$, in sales per impression. The holdout gives one equation,
+\begin{equation}
+\label{eq:one-bundle}
+\sum_{c} p_{c} W_{kc} = -\tau_{k}.
+\end{equation}
+Several channels in the same bundle leave this one equation short. The package does not estimate $p_{c}$.
+
+If the user already has $p_{c}$, from an older single-channel test or from a mix model they are willing to own, the measured lift can be split as
+\begin{equation}
+\label{eq:allocation}
+a_{kc} = \tau_{k}\,\frac{p_{c} W_{kc}}{\sum_{j} p_{j} W_{kj}}.
+\end{equation}
+The channel pieces add back to the cell lift. Setting every $p_{c}$ equal to 1 splits the bundle by held-out impressions. Any other weight is an assumption the user brings in. On the public Meridian impression paths, with all five channels dark together and sales built from known weights, an impression split gives Channel2 7.8 percent of the bundle against a true share of 2.4 percent, and Channel1 12.7 percent against 19.2 percent. Putting those known weights into \eqref{eq:allocation} closes the gaps. The check uses the same weights that built the sales. The holdout does not discover them. The script is \texttt{examples/public\_allocation\_benchmark.py}.
+
+The multi-cell fit above is a different calculation. Different cells turn off different channels, so the impression paths can separate the responses. When they cannot, the response stays blank. Equation \eqref{eq:allocation} is a labeled split of one measured lift. It is not a channel incrementality estimate.
+
+The output is the channel responses, the measured lift next to the lift implied by those responses, the still-on impression check, and daily impact. A market bootstrap reruns the whole pipeline on markets redrawn inside each cell.
 
 \section{Illustrative examples}
 \label{sec:example}
 
-No public geo holdout ships with known channel-level effects. The example uses the published Meridian geo impression file \texttt{geo\_all\_channels.csv}: 40 markets and 156 weeks, from 25 January 2021 through 15 January 2024 \cite{meridiandata}. Sales are constructed so the slopes are known. Meridian's conversions column is used only to form strata. It is not the outcome, because that series already contains Meridian's own media response.
+No public geo holdout comes with a known channel-level incrementality. The example uses Google's published Meridian geo file \path{geo_all_channels.csv}: 40 markets and 156 weeks, from 25 January 2021 through 15 January 2024 \cite{meridiandata}. The public file demonstrates that the software runs. The sales are constructed so the channel responses are known. That is a check of the software, not evidence that a campaign worked. Meridian's conversions column is used only to group similar markets. It is not the outcome, because that series already contains Meridian's own media response.
 
-Three of the five channels are used, with planted slopes $2\times 10^{-4}$, $5\times 10^{-4}$, and $1\times 10^{-4}$ sales per impression. Strata are quartiles of each market's mean conversions. With \texttt{control\_share = 0.4} and seed 1, the design places 16 markets in control and 8 in each cell. The test window is the last 16 weeks, beginning 2 October 2023. In a dark market-week the turned-off channel's impressions are set to zero, and sales are
+Three of the five channels are used, with planted responses $2\times 10^{-4}$, $5\times 10^{-4}$, and $1\times 10^{-4}$ sales per impression. Markets are grouped into quartiles of average conversions. With \texttt{control\_share = 0.4} and seed 1, 16 markets stay on business as usual and 8 go into each cell. The flight is the last 16 weeks, starting 2 October 2023. In a dark market-week the turned-off channel's impressions are set to zero, and sales are
 \begin{equation}
 \label{eq:sales}
 Y_{it} = \alpha_{i} + \gamma_{t} + \sum_{c} \beta_{c} X_{itc} + \varepsilon_{it},
 \end{equation}
 with $\alpha_{i}\sim N(0,50^{2})$, $\gamma_{t}\sim N(0,20^{2})$, and $\varepsilon_{it}\sim N(0,30^{2})$, drawn with seed 7. The script is \texttt{paper/example.py}.
 
-The cells turn off $\{$Channel0, Channel1$\}$, $\{$Channel0, Channel2$\}$, and $\{$Channel1, Channel2$\}$, yielding rows $(1,1,0)$, $(1,0,1)$, and $(0,1,1)$. The schedule has full column rank, but no channel is tested alone; the assignment-only table therefore leaves all three channel effects blank. Table~\ref{tab:slopes} instead reports the impression-model slopes, softly calibrated to the three measured bundles.
+The cells go dark on $\{$Channel0, Channel1$\}$, $\{$Channel0, Channel2$\}$, and $\{$Channel1, Channel2$\}$. No channel is dark alone, so the holdout-only table leaves all three channel estimates blank. Table~\ref{tab:slopes} reports the impression-model responses, pulled toward the three measured bundle lifts.
 
-This is a recovery check for the linear model that the package fits, not evidence about saturation, long carryover, or the power of an eight-market cell. The impression paths are external to the package; sales are constructed from known slopes. Real experiments with smaller effects will have wider intervals \cite{lewisrao2015}.
+This checks whether the package recovers the straight-line response it was built to fit. It is not evidence about saturation, long carryover, or whether eight markets are enough to power a cell. A real flight with a smaller lift will have a wider interval \cite{lewisrao2015}.
 
 \begin{table}[t]
 \centering
-\caption{Cell effects on the constructed series, with the still-on refit requested. The default leaves the unadjusted column in place and only records the shift. The model column values the off-channel impression change at the fitted slopes.}
+\caption{Cell lift on the constructed series, with the still-on refit requested. By default the unadjusted holdout stays the published number and the impression shift is only recorded. The model column values the dark-channel impression change at the fitted responses.}
 \label{tab:cells}
 \begin{tabular}{llrrrr}
 \toprule
@@ -191,15 +217,15 @@ Cell & Bundle & Unadjusted & Adjusted & SE & Model \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.92\linewidth]{bundle_contrast.pdf}
-\caption{Experimental bundle effect, with a 95 percent interval, and the same off-channel impression change valued at the fitted slopes. Sales per market-week.}
+\caption{Measured bundle lift, with a 95 percent interval, and the same dark-channel impression change valued at the fitted responses. Sales per market-week.}
 \label{fig:bundles}
 \end{figure}
 
-Cell 2 illustrates the exposure correction. Channel1's still-on shift, valued at the joint pre-test slope, is worth $-59$ sales, or 19 percent of the unadjusted effect, and refitting moves the estimate from $-318.0$ to $-251.5$. Cells 1 and 3 stay at the unadjusted experiment.
+Cell 2 shows the still-on check. Channel1 was supposed to stay on, but its impression gap, valued at the joint pre-period response, is worth $-59$ sales, or 19 percent of the unadjusted lift. Refitting moves the estimate from $-318.0$ to $-251.5$. Cells 1 and 3 stay on the unadjusted holdout.
 
 \begin{table}[t]
 \centering
-\caption{Planted and recovered slopes, in sales per 10{,}000 impressions. The largest absolute error is 0.21 percent.}
+\caption{Planted and recovered response, in sales per 10{,}000 impressions. The largest absolute error is 0.21 percent.}
 \label{tab:slopes}
 \begin{tabular}{lrrrr}
 \toprule
@@ -214,7 +240,7 @@ Channel2 & 1.000 & 1.002 & 0.008 & 0.21 \\
 
 \begin{table}[t]
 \centering
-\caption{Two hundred refits per setting. Rho is the mixing weight on Channel0 in the untreated Channel1 path, and the correlation is what that mix produces. Noise multiplies the example residual standard deviation. Error is the median absolute percent error among reported slopes. Coverage brackets are 95 percent Monte Carlo intervals. At rho 1, error and coverage refer to the remaining channel.}
+\caption{Two hundred refits per setting. Rho is how far the live Channel1 impression path is mixed toward Channel0, and the correlation is what that mix produces. Noise multiplies the example's leftover sales movement. Error is the median absolute percent error among reported responses. The brackets are the range of that coverage across the simulated tests. At rho 1, error and coverage refer to the channel that is still separate.}
 \label{tab:reliability}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -232,31 +258,31 @@ Noise & Rho & Corr. & Runs & Error (\%) & Coverage [MC interval] & Withheld \\
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:cells} compares experimental and model-implied bundle effects. Their gaps are 2.6, 0.8, and 0.9 percent of the experimental effects; all model totals lie within the experimental intervals. The bundle coefficient remains the experimental result, while the channel slope is the model-assisted split.
+Table~\ref{tab:cells} puts the holdout lift next to the lift implied by the channel responses. The gaps are 2.6, 0.8, and 0.9 percent of the holdout lifts, and every model total sits inside the holdout interval. The bundle number is the holdout. The channel number is the model, pulled toward that holdout.
 
-The same three cell totals and the withheld-impression matrix can be solved for the three channel slopes with no observational market-weeks. That experiment-only split gives 2.22, 4.48, and 2.01 sales per 10{,}000 impressions, with standard errors 0.43, 0.64, and 1.14. The calibrated standard errors on the same series are 0.006, 0.008, and 0.008. The tighter intervals come from the impression histories, not from the three cell totals.
+The same three cell lifts and the held-out impressions can be solved for the three channel responses with no pre-period impression history. That holdout-only split gives 2.22, 4.48, and 2.01 sales per 10{,}000 impressions, with uncertainty 0.43, 0.64, and 1.14. The calibrated uncertainty on the same series is 0.006, 0.008, and 0.008. The tighter intervals come from the impression history, not from the three cell lifts.
 
-When Channel1 is replaced with a copy of Channel0, both are withheld. Their shared path remains as one control: Channel2 is then recovered as 0.97 sales per 10{,}000 impressions, versus its planted 1.00. Omitting the shared path instead biases it to 3.02. Figure~\ref{fig:refused} shows those two fits against the planted value.
+When Channel1 is replaced with a copy of Channel0, both stay blank. Their shared path remains as one control, and Channel2 comes back as 0.97 sales per 10{,}000 impressions against a planted 1.00. Dropping that shared path instead pushes it to 3.02. Figure~\ref{fig:refused} shows those two fits against the planted response.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.92\linewidth]{refused.pdf}
-\caption{Channel2 when Channel1 is an exact copy of Channel0. Keeping the shared path as one control recovers the planted slope. Dropping that path pushes the remaining slope from about 1 to about 3 sales per 10{,}000 impressions.}
+\caption{Channel2 when Channel1 is an exact copy of Channel0. Keeping the shared delivery as one control recovers the planted response. Dropping that path pushes the remaining response from about 1 to about 3 sales per 10{,}000 impressions.}
 \label{fig:refused}
 \end{figure}
 
-Table~\ref{tab:reliability} and Figure~\ref{fig:separation} summarize 200 draws for each mixing weight and noise level. At the example noise, median absolute error is 0.19 percent when the paths are distinct, where their correlation is 0.34, and 0.40 percent at mixing weight 0.9, where the correlation is 0.96. Coverage is 95.8 and 95.3 percent. At an exact copy, the pair is withheld in every run and the remaining channel covers in 94.0 percent of runs. Multiplying the residual noise by four raises the distinct-path error from 0.19 to 0.76 percent and leaves coverage at 95.8 percent. These results assess this design and the diagonal covariance approximation.
+Table~\ref{tab:reliability} and Figure~\ref{fig:separation} summarize 200 draws for each mix and noise level. At the example noise, median absolute error is 0.19 percent when the impression paths are distinct, where their correlation is 0.34, and 0.40 percent when the mix weight is 0.9 and the correlation is 0.96. The 95 percent intervals cover the truth 95.8 and 95.3 percent of the time. At an exact copy, the pair is left blank in every run and the remaining channel is covered in 94.0 percent of runs. Multiplying the leftover sales noise by four raises the distinct-path error from 0.19 to 0.76 percent and leaves coverage at 95.8 percent. These checks are for this design, and for uncertainty that treats the cells as separate.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{separation.pdf}
-\caption{Recovery over 200 simulations as the untreated Channel1 path is mixed toward Channel0. The second series multiplies residual noise by four. Bars in the coverage panel are 95 percent Monte Carlo intervals. At mix weight 1 the pair is withheld, so error and coverage refer to the remaining channel.}
+\caption{Recovery over 200 simulations as the live Channel1 impression path is mixed toward Channel0. The second series multiplies leftover sales noise by four. The bars are the range of coverage across those simulations. At mix weight 1 the pair is left blank, so error and coverage refer to the channel that is still separate.}
 \label{fig:separation}
 \end{figure}
 
 \begin{table}[H]
 \centering
-\caption{Misspecification stress test over 200 draws. Error is the median absolute percent error in channel contribution to the experimental contrast. Coverage is the mean coverage of its nominal 95 percent interval; brackets give the 95 percent Monte Carlo interval. Gap is the median absolute model--experiment bundle gap as a percentage of the experimental effect.}
+\caption{Stress test over 200 draws when the sales response is not the straight line the package fits. Error is the median absolute percent error in each channel's contribution to the holdout contrast. Coverage is how often the stated 95 percent interval contains that contribution. The brackets are the range of that coverage across the draws. Gap is the median absolute difference between the model bundle and the holdout lift, as a percent of the holdout lift.}
 \label{tab:stress}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -271,13 +297,13 @@ Saturation omitted & 200 & 26.99 & 0.000 [0.000, 0.000] & 26.97 \\
 \end{tabular}
 \end{table}
 
-The preceding recovery check uses the model that generated sales. Table~\ref{tab:stress} instead evaluates two omitted response mechanisms over 200 draws. Geometric carryover has decay 0.5. The saturation response is $\beta_c X/(1+X/h_c)$, where $h_c$ is twice the median positive exposure and $\beta_c$ is the slope at zero. Because neither process has one true raw-impression slope, error and coverage refer to each channel's known contribution to the same pre/post, test/control contrast as the experiment. The carryover model is also refit with the planted decay to check the package's optional adstock transformation.
+The recovery check above uses the same straight-line response that built the sales. Table~\ref{tab:stress} instead turns on two responses the fit can miss, over 200 draws. Carryover keeps half of last week's impressions in this week's effect. Saturation uses $\beta_c X/(1+X/h_c)$, where $h_c$ is twice the median positive delivery and $\beta_c$ is the response at the first impression. Neither response has one true sales-per-raw-impression number, so the error is judged against each channel's known contribution to the same dark-versus-BAU contrast as the holdout. The carryover case is also refit with the decay that built the sales, to check the optional adstock.
 
-Supplying the planted carryover decay restores the recovery seen under the linear model. Omitting carryover or saturation produces large errors and no interval coverage. The corresponding bundle gaps are also large, so the package exposes the disagreement rather than making the misspecified channel split look experimentally validated. These stress tests do not select a decay or estimate a saturation curve.
+Putting that decay in brings the error back to the straight-line result. Leaving carryover or saturation out produces large channel errors, and the 95 percent intervals miss the truth every time. The bundle gap is large too, so the package shows the disagreement instead of making a bad channel split look like a clean lift estimate. These checks do not pick a decay, and they do not fit a saturation curve.
 
 \begin{table}[H]
 \centering
-\caption{Further checks, 30 draws each, so the coverage intervals are wide. Error is the median absolute percent error among reported slopes. The confounded row instead reports the Channel0 error. Coverage brackets are 95 percent Monte Carlo intervals. Serial correlation adds an AR(1) residual with autocorrelation 0.8. Heterogeneous slopes vary by market between half and one and a half times the planted slope. Redistribution moves half of a typical withheld week onto a channel the cell left on. Incomplete delivery leaves 30 percent of the control level running. The confounder follows Channel0's business-as-usual path and does not turn off. The collinear rows mix Channel1 toward Channel0 with weight 0.999, correlation 0.9995, and use slopes at 5 percent of the example.}
+\caption{Further checks, 30 draws each, so the coverage ranges are wide. Error is the median absolute percent error among reported responses. The confounded row reports the Channel0 error. The brackets are the range of coverage across the draws. Serial correlation means this week's leftover sales still look like last week's, with correlation 0.8. Market-specific response lets each market sit between half and one and a half times the planted response. Redistribution moves half of a typical held-out week onto a channel the cell left on. Incomplete delivery leaves 30 percent of the business-as-usual level still running. The confounder follows Channel0's usual delivery and does not go dark. The collinear rows mix Channel1 toward Channel0 with weight 0.999, correlation 0.9995, and responses at 5 percent of the example.}
 \label{tab:robustness}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -300,30 +326,30 @@ Experiment only & 30 & 11.16 & 1.000 [1.000, 1.000] & -- \\
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:robustness} asks what the linear recovery depends on. Serial correlation and a recorded shortfall in delivery leave the channel error near the linear result. Market-specific slopes do not: coverage falls to 34.4 percent. Moving the lost impressions onto a still-on channel leaves the channel error near 0.2 percent. The raw cell total sits 52.9 percent away from the total after those extra impressions are removed, because the experiment contains the reallocated delivery. The channel split is calibrated to the cleaned total, and the remaining bundle gap is 12.6 percent. Replacing the reported cell estimate with that refit does not change the split, so the two budget rows agree. On the original series the observational fit and the calibrated fit both have 0.22 percent error. The calibration rows are not what produces that recovery.
+Table~\ref{tab:robustness} asks what that recovery depends on. Sales that linger from week to week, and a recorded shortfall in delivery, leave the channel error near the straight-line result. A response that differs by market does not: coverage falls to 34.4 percent. Moving the lost impressions onto a channel left on leaves the channel error near 0.2 percent. The raw cell lift sits 52.9 percent away from the lift after those extra impressions are removed, because the holdout still contains the moved delivery. The channel split is calibrated to the cleaned lift, and the remaining bundle gap is 12.6 percent. Publishing that refit instead of the raw cell lift does not change the split, so the two budget rows agree. On the original series the impression-history fit and the calibrated fit both have 0.22 percent error. The calibration rows are not what produces that recovery.
 
-A confounder that tracks Channel0 and stays on during the holdout leaves that slope 49.9 percent high after calibration, against 50.0 percent with the observational fit. The bundle gap opens to 21 percent. The diagnostic moves. The slope does not. Calibration does change the split when the channels are nearly copies and the planted slopes are small. At mixing weight 0.999 the observational median error is 44.6 percent and the calibrated error is 10.5 percent, and the bundle gap falls from 43 percent to 8.8 percent. Both of those coverage intervals come from 30 draws and are wide: the observational interval runs from 0.895 to 1, and the calibrated interval runs from 0.967 to 1. The experiment-only split, refit on the original linear series, has median error 11.2 percent and coverage 1 because its intervals are wide. Figure~\ref{fig:failures} puts the coverage and gap pattern next to the omitted-response checks.
+A confounder that tracks Channel0 and stays on during the holdout leaves that response 49.9 percent high after calibration, against 50.0 percent from the impression history alone. The bundle gap opens to 21 percent. The gap moves. The response does not. Calibration does change the split when the channels are nearly copies and the planted responses are small. At a mix weight of 0.999 the impression-history error is 44.6 percent and the calibrated error is 10.5 percent, and the bundle gap falls from 43 percent to 8.8 percent. Both coverage ranges come from only 30 draws and are wide: the impression-history range runs from 0.895 to 1, and the calibrated range runs from 0.967 to 1. The holdout-only split, on the original straight-line series, has median error 11.2 percent and coverage 1 because its intervals are wide. Figure~\ref{fig:failures} puts coverage and the bundle gap next to the carryover and saturation checks.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{failures.pdf}
-\caption{Coverage and the bundle gap. The linear, serial, delivery, slope, budget, confounder, and collinear rows are 30 draws. Carryover and saturation are the 200-draw checks in Table~\ref{tab:stress}. The pale line is 95 percent coverage.}
+\caption{Coverage and the bundle gap. The straight-line, serial, delivery, market-response, budget, confounder, and collinear rows are 30 draws. Carryover and saturation are the 200-draw checks in Table~\ref{tab:stress}. The pale line is 95 percent coverage.}
 \label{fig:failures}
 \end{figure}
 
 \section{Impact}
 \label{sec:impact}
 
-The package gives teams one place to assign cells, measure bundle effects, check which channels can be separated, and report model-assisted channel slopes next to the remaining model--experiment gap. GeoLift and GeoX can run more than one cell; they do not make this split \cite{geolift,geox2026}. Robyn and PyMC-Marketing already calibrate a mix model to lift tests \cite{runge2024,pymcmarketing2024}. This package is the concurrent holdout, the reported gap, and the refusal when channels cannot be separated. The bundle is the directly measured result. The channel is the finer, model-assisted result.
+\texttt{causalgeo} is a package for concurrent geo holdouts that reports bundle lift, uses impression paths for a model-assisted channel split, and refuses channel estimates that the design cannot distinguish. GeoLift and GeoX can run more than one cell. They do not make this split \cite{geolift,geox2026}. Robyn and PyMC-Marketing already calibrate a mix model to lift tests \cite{runge2024,pymcmarketing2024}. This package is the concurrent holdout, the reported gap, and the blank channel when the impressions cannot separate it. The bundle lift is the holdout. A channel response is reported when the cells separate the channels. Splitting one bundle with a sales-per-impression weight is an assumption the user brings, and the package does not estimate that weight.
 
-The current release is 0.2.0. Adoption is early, and this paper has no user study. The reusable example, \texttt{paper/reproduce.py}, rebuilds all five tables and four figures. The same functions apply to a real holdout once the user supplies market outcomes and channel impressions. Channels the design cannot separate, or whose impressions are copies, remain blank rather than receiving a made-up slope.
+The current release is 0.2.0. Adoption is early, and this paper has no user study. \texttt{paper/reproduce.py} rebuilds all five tables and four figures. The same functions apply to a real holdout once the user supplies market outcomes and channel impressions. Channels the flight cannot separate, or whose impressions are copies, stay blank rather than receiving a made-up response.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-\texttt{causalgeo} measures concurrent channel-bundle holdouts and splits a measured bundle only when the impression data support it. The calibration is soft: it guides the channel model toward the experiment rather than forcing agreement. On one constructed series the slopes are within 0.21 percent of the planted values. Solving the same cell totals with no impression model gives standard errors of 0.43 to 1.14 sales per 10{,}000 impressions, against 0.006 to 0.008 for the calibrated split. Across 200 draws, four times the residual noise raises median error from 0.19 to 0.76 percent and leaves coverage at 95.8 percent. Market-specific slopes cut coverage to 34.4 percent. A confounder the holdout leaves on keeps the affected slope about 50 percent high, while nearly copied channels with small effects move from 44.6 percent error to 10.5 percent once the cell totals are included. A matched carryover fit gives 94.2 percent coverage. Omitted carryover or saturation produces large channel errors and bundle gaps. On a 30-period panel with the same market counts, cell intervals covered the true effect in 91.8 percent of 200 re-randomized assignments. Intervals remain conditional on the response model and the diagonal covariance approximation.
+\texttt{causalgeo} estimates concurrent channel-bundle holdouts and splits a measured bundle only when the impression paths can separate the channels. One bundled test estimates that bundle's lift. The impressions removed from each channel are observed. The sales per impression are not. Equation \eqref{eq:one-bundle} is one equation for every channel in the bundle, so those channel estimates stay blank unless other cells separate them. Equation \eqref{eq:allocation} splits the measured lift only after the user supplies the sales-per-impression weights. Those weights are an input. They are not an estimate from the holdout. The calibration is a pull, not a force: it moves the mix model toward the lift test and still shows the gap. On one constructed series the responses are within 0.21 percent of the planted values. Solving the same cell lifts with no impression history gives uncertainty of 0.43 to 1.14 sales per 10{,}000 impressions, against 0.006 to 0.008 for the calibrated split. Across 200 draws, four times the leftover sales noise raises median error from 0.19 to 0.76 percent and leaves coverage at 95.8 percent. A response that differs by market cuts coverage to 34.4 percent. A confounder the holdout leaves on keeps the affected response about 50 percent high. Nearly copied channels with small effects move from 44.6 percent error to 10.5 percent once the cell lifts are included. A carryover fit that uses the decay from the sales gives 94.2 percent coverage. Leaving out carryover or saturation produces large channel errors and large bundle gaps. On a 30-week series with the same market counts, the cell intervals covered the true lift in 91.8 percent of 200 redrawn assignments. The intervals still depend on the response that was fitted, and on treating the cells as separate.
 
-The split is linear, with optional geometric adstock and no saturation curve \cite{jin2017}. A channel being on or off does not reveal the full response curve, so the package does not estimate one, and it does not estimate an interaction between channels \cite{naik2003}. GeoLift and GeoX handle market selection and power \cite{geolift,geox2026}. This package assigns markets within strata the user has already chosen, or accepts that assignment, and does not claim that eight markets make a powered cell \cite{lewisrao2015}. The published fits leave the stability check off. The default cell result is the unadjusted experiment. When lost impressions move to a channel left on, the split uses the refitted cell total after that delivery is removed. Test-period spend stays out of the regression because assignment changes it \cite{angrist2009,lewis2011}.
+The split is a straight line, with optional geometric adstock and no saturation curve \cite{jin2017}. Turning a channel on or off does not trace the response curve, so the package does not fit one, and it does not estimate an interaction between channels \cite{naik2003}. GeoLift and GeoX handle market selection and power \cite{geolift,geox2026}. This package assigns markets inside groups the user has already chosen, or accepts that assignment, and does not claim that eight markets make a powered cell \cite{lewisrao2015}. The published fits leave the stability check off. The default cell number is the unadjusted holdout. When lost impressions move onto a channel left on, the split uses the refitted cell lift after that delivery is removed. In-flight spend stays out of the estimate because the assignment is what changes it \cite{angrist2009,lewis2011}.
 
 \section*{CRediT authorship contribution statement}
 Aditya Puttaparthi Tirumala: Conceptualization, Methodology, Software, Validation, Writing -- original draft, Writing -- review and editing.
@@ -332,7 +358,7 @@ Aditya Puttaparthi Tirumala: Conceptualization, Methodology, Software, Validatio
 The author declares that he has no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
 
 \section*{Data availability}
-The impression paths are the Meridian file \texttt{geo\_all\_channels.csv} \cite{meridiandata}. \texttt{examples/meridian\_conversions.py} runs the same split on Meridian's conversions column. That run has no known channel effects. It only shows the software on that file. In \texttt{paper/}, set \texttt{PYTHONPATH=../src} and run \texttt{python3.11 reproduce.py}. That rebuilds Tables~\ref{tab:cells}--\ref{tab:robustness} and the four figures, then checks them against the rounded values reported here. \texttt{python3.11 reproduce.py --fast} uses two draws per setting and only checks that the scripts finish. Table~\ref{tab:metadata} gives the repository links.
+The impression paths are Google's public Meridian file \path{geo_all_channels.csv} \cite{meridiandata}. \texttt{examples/meridian\_conversions.py} runs the same split on Meridian's conversions column. That run has no known channel incrementality. It only shows the software on that file. The archived v0.2.0 release is \metaurl{https://doi.org/10.5281/zenodo.23608832}. In \texttt{paper/}, set \texttt{PYTHONPATH} to \texttt{../src} and run \texttt{python3.11 reproduce.py}. Set \texttt{MPLCONFIGDIR} to a writable directory first if Matplotlib warns about its font cache. The script does that itself when the variable is unset. That rebuilds Tables~\ref{tab:cells}--\ref{tab:robustness} and the four figures, then checks them against the rounded values reported here. \texttt{python3.11 reproduce.py --fast} uses two draws per setting and only checks that the scripts finish. Table~\ref{tab:metadata} gives the repository links.
 
 \section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
 During the preparation of this work the author used Cursor, with the Grok language model, to draft and revise the manuscript and the example code. After using this tool, the author reviewed and edited the content as needed and takes full responsibility for the content of the published article.

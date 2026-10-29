@@ -1,12 +1,57 @@
 cff-version: 1.2.0
-message: If you use this software, please cite it.
-title: causalgeo
-version: 0.2.0
-date-released: 2026-10-23
-license: MIT
-repository-code: https://github.com/adityapt/causalgeo
+message: "If you use causalgeo, please cite the software release below. The SoftwareX manuscript is not yet published."
+title: "causalgeo: concurrent geo holdouts for bundle lift and calibrated channel responses"
+version: "0.2.0"
+doi: 10.5281/zenodo.23608832
+type: software
 authors:
   - family-names: Puttaparthi Tirumala
     given-names: Aditya
+    orcid: https://orcid.org/0009-0008-9495-3932
     email: puttaparthy.aditya@gmail.com
     affiliation: Independent Researcher
+license: MIT
+date-released: 2026-10-23
+url: https://github.com/adityapt/causalgeo
+repository-code: https://github.com/adityapt/causalgeo
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23608832
+    description: "Zenodo archive of causalgeo v0.2.0"
+  - type: doi
+    value: 10.5281/zenodo.23608831
+    description: "Zenodo concept DOI, which points at the latest release"
+keywords:
+  - geo experiment
+  - geo holdout
+  - incrementality
+  - marketing mix modeling
+  - channel response
+  - adstock
+  - Python
+abstract: |
+  causalgeo is a package for concurrent geo holdouts that reports bundle
+  lift, uses impression paths for a model-assisted channel split, and
+  refuses channel estimates that the design cannot distinguish. Each cell
+  turns a bundle of channels off in a group of markets and compares those
+  markets with business-as-usual controls. One bundled test estimates that
+  bundle's total lift.
+  It does not estimate how many sales each channel's impressions were
+  worth. Splitting that one total requires a sales-per-impression weight
+  the user already has. The package does not calculate that weight.
+  A channel response is reported when different cells separate the
+  channels. Channels whose impressions are copies stay blank.
+preferred-citation:
+  type: software
+  title: "causalgeo: concurrent geo holdouts for bundle lift and calibrated channel responses"
+  authors:
+    - family-names: Puttaparthi Tirumala
+      given-names: Aditya
+      orcid: https://orcid.org/0009-0008-9495-3932
+      affiliation: Independent Researcher
+  version: "0.2.0"
+  date-released: 2026-10-23
+  doi: 10.5281/zenodo.23608832
+  url: https://doi.org/10.5281/zenodo.23608832
+  repository-code: https://github.com/adityapt/causalgeo
+  license: MIT

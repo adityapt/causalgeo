@@ -32,6 +32,46 @@ class ChannelModel:
     cells: pd.DataFrame
 
 
+def bundle_impression_contrasts(
+    impressions: pd.DataFrame,
+    design: ConcurrentDesign,
+    treatment_start: str,
+    geo_col: str = "geo",
+    date_col: str = "date",
+    channel_col: str = "channel",
+    impression_col: str = "impressions",
+    decay: float = 0.0,
+) -> pd.DataFrame:
+    """Return the off-channel exposure loss used by each bundle equation."""
+    if not 0 <= decay < 1:
+        raise ValueError("decay must be between 0 and 1, not including 1")
+    transformed = _adstock(
+        impressions,
+        geo_col,
+        date_col,
+        channel_col,
+        impression_col,
+        decay,
+    )
+    channels = _channel_list(transformed, channel_col)
+    wide = _wide(
+        transformed,
+        geo_col,
+        date_col,
+        channel_col,
+        impression_col,
+        channels,
+    )
+    return _withheld(
+        wide,
+        design,
+        channels,
+        geo_col,
+        date_col,
+        treatment_start,
+    )
+
+
 def disentangle(
     design: ConcurrentDesign,
     outcomes: pd.DataFrame,

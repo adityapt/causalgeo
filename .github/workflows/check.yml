@@ -20,4 +20,6 @@ jobs:
       - name: Test
         run: python -m pytest
       - name: Reproduce the manuscript scripts
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
         run: python paper/reproduce.py --fast

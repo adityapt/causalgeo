@@ -18,8 +18,13 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import re
+import tempfile
 from pathlib import Path
+
+if not os.environ.get("MPLCONFIGDIR"):
+    os.environ["MPLCONFIGDIR"] = tempfile.mkdtemp(prefix="causalgeo-mpl-")
 
 import numpy as np
 import pandas as pd

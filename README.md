@@ -32,6 +32,55 @@ result = disentangle(
 
 `examples/concurrent_holdout.py` builds a small panel, prints the channel table, and shows a split the package refuses because two channels are the same series.
 
+## One bundle with many channels
+
+One bundle supplies one experimental equation, even when it turns off eight channels. `bayesian_channel_allocation` combines that equation with a joint prior mean and covariance from an external MMM:
+
+```python
+from causalgeo import bayesian_channel_allocation, bundle_impression_contrasts
+
+withheld = bundle_impression_contrasts(
+    impressions,
+    design,
+    treatment_start="2026-08-03",
+)
+allocation = bayesian_channel_allocation(
+    prior_mean=mmm_slopes,
+    prior_covariance=mmm_covariance,
+    bundle_effects=result.cells[["cell", "coef", "std_err"]],
+    withheld=withheld,
+)
+```
+
+`allocation.channels` reports the prior and posterior slope, posterior interval, update, and variance reduction for each channel. `allocation.posterior_covariance` retains the joint uncertainty. `tested_rank` says how many independent directions the experiment measured; `remaining_dimensions` says how many remain prior-driven. With one eight-channel bundle those values are 1 and 7.
+
+These are Bayesian model-assisted allocations, not eight channel-level experimental estimates. The experiment identifies the total. The MMM prior supplies the split in directions the bundle did not test. See `examples/bayesian_bundle.py`.
+
+## No prior: allocate the measured total
+
+When there is no external MMM prior, the bundle total can still be divided by the exposure the holdout removed. This is an assumption-driven allocation. It is not a channel-level experiment.
+
+```python
+from causalgeo import anchored_channel_allocation, prevented_effective_dose
+
+dose = prevented_effective_dose(
+    impressions,
+    design,
+    treatment_start="2026-08-03",
+    quality_col="viewability",
+)
+allocation = anchored_channel_allocation(
+    result.cells[["cell", "coef", "std_err"]],
+    dose,
+    potency={"Search": 1.0, "Social": 1.0, "Video": 1.0},
+    potency_bounds={"Search": (0.5, 1.5), "Social": (0.5, 1.5), "Video": (0.5, 1.5)},
+)
+```
+
+`allocation.channels` contains one row per cell and channel. `allocation` sums to the measured cell effect. `ci_lower` and `ci_upper` scale the experimental interval by the chosen share. `assumption_lower` and `assumption_upper` vary only the stated potency bounds. `envelope_lower` and `envelope_upper` combine those two sources. Reach and frequency replace impressions when both columns are supplied; `frequency_decay` sets the diminishing-frequency curve. `decay` carries exposure forward, and `hill_slope` with `hill_half` saturates it. See `examples/anchored_allocation.py`.
+
+`examples/public_allocation_benchmark.py` scores that split on Google's public Meridian geo panel, `geo_all_channels.csv`. The public file supplies the impression paths. Sales are constructed from known slopes because the file has no channel-level experiment result. With the correct potency, the channel shares match the planted shares. Equal potency does not.
+
 The single-cell path is unchanged. You supply treatment geos, control geos, and a pretest/test conversion series. `analyze()` returns lift, percent lift, and iCPD. The setting is the same as [GeoLift](https://facebookincubator.github.io/GeoLift/) and [Meridian GeoX](https://developers.google.com/meridian/geox).
 
 ## Intervention types (GeoX)

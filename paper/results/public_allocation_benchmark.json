@@ -1,0 +1,66 @@
+{
+  "source": "https://raw.githubusercontent.com/google/meridian/main/meridian/data/simulated_data/csv/geo_all_channels.csv",
+  "treatment_start": "2023-10-02",
+  "n_geos": 40,
+  "n_weeks": 156,
+  "bundle_effect": -1815.183342706342,
+  "bundle_std_err": 162.90943628854924,
+  "planted_bundle_effect": -1816.2305869940474,
+  "reconciliation_error": -2.2737367544323206e-13,
+  "max_abs_informed_share_error": 0.0,
+  "max_abs_equal_share_error": 0.0830902008039156,
+  "channels": [
+    {
+      "channel": "Channel0",
+      "dose": 1049906.1683035714,
+      "planted_share": 0.11561375255123511,
+      "share_equal": 0.1905595822224934,
+      "share_informed": 0.11561375255123511,
+      "allocation_equal": -345.90057944334956,
+      "allocation_informed": -209.86015781877484
+    },
+    {
+      "channel": "Channel1",
+      "dose": 697799.0425595238,
+      "planted_share": 0.1921008949955017,
+      "share_equal": 0.12665159805685697,
+      "share_informed": 0.1921008949955017,
+      "allocation_equal": -229.8958711199457,
+      "allocation_informed": -348.6983447148148
+    },
+    {
+      "channel": "Channel2",
+      "dose": 428637.77336309524,
+      "planted_share": 0.02360040495037099,
+      "share_equal": 0.07779841426099124,
+      "share_informed": 0.02360040495037099,
+      "allocation_equal": -141.21838565551883,
+      "allocation_informed": -42.83906194703771
+    },
+    {
+      "channel": "Channel3",
+      "dose": 2145103.7616815474,
+      "planted_share": 0.47242982846837783,
+      "share_equal": 0.38933962766446223,
+      "share_informed": 0.47242982846837783,
+      "allocation_equal": -706.7228067920212,
+      "allocation_informed": -857.5467552334138
+    },
+    {
+      "channel": "Channel4",
+      "dose": 1188148.5001488095,
+      "planted_share": 0.19625511903451445,
+      "share_equal": 0.21565077779519615,
+      "share_informed": 0.19625511903451445,
+      "allocation_equal": -391.44569969550673,
+      "allocation_informed": -356.239022992301
+    }
+  ],
+  "equal_potency_bias_ratio": {
+    "Channel0": 1.64824320651685,
+    "Channel1": 0.6592972826067399,
+    "Channel2": 3.2964864130337,
+    "Channel3": 0.824121603258425,
+    "Channel4": 1.0988288043445666
+  }
+}
