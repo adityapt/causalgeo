@@ -194,8 +194,8 @@ def _check_tables() -> None:
         r'(?m)^version = "([^"]+)"',
         (ROOT / "pyproject.toml").read_text(),
     ).group(1)
-    if version != "0.2.0":
-        raise AssertionError(f"manuscript metadata C1 says 0.2.0, pyproject says {version}")
+    if version != "0.2.2":
+        raise AssertionError(f"manuscript metadata C1 says 0.2.2, pyproject says {version}")
     alone = pd.read_csv(OUT / "experiment_only.csv")
     reported_alone = pd.DataFrame(
         {

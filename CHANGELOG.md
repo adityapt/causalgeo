@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 — 2026-10-29
 
 - `examples/public_allocation_benchmark.py` scores the allocation on Google's public Meridian geo panel.
 - `anchored_channel_allocation` divides a measured bundle effect by prevented effective dose and reports potency sensitivity separately from the experimental interval.

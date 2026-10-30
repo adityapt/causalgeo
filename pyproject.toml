@@ -1,6 +1,6 @@
 [project]
 name = "causalgeo"
-version = "0.2.0"
+version = "0.2.2"
 description = "Channel effects from concurrent geo holdouts: bundle experiments, a model-assisted split, and a reported gap."
 readme = "README.md"
 requires-python = ">=3.10"
