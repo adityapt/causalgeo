@@ -3,7 +3,7 @@
 **Concurrent geo holdouts for bundle lift and calibrated channel responses**
 
 [![tests](https://github.com/adityapt/causalgeo/actions/workflows/check.yml/badge.svg)](https://github.com/adityapt/causalgeo/actions/workflows/check.yml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23608831.svg)](https://doi.org/10.5281/zenodo.23608831)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23787152.svg)](https://doi.org/10.5281/zenodo.23787152)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
 
@@ -252,9 +252,9 @@ MIT. See [LICENSE.txt](LICENSE.txt).
 
 ## Citation
 
-The SoftwareX manuscript is not yet published. Cite the v0.2.2 release: [github.com/adityapt/causalgeo/releases/tag/v0.2.2](https://github.com/adityapt/causalgeo/releases/tag/v0.2.2).
+The SoftwareX manuscript is not yet published. Cite v0.2.2: [10.5281/zenodo.23787152](https://doi.org/10.5281/zenodo.23787152).
 
-The Zenodo concept DOI points at the latest archive: [10.5281/zenodo.23608831](https://doi.org/10.5281/zenodo.23608831). The v0.2.0 archive remains [10.5281/zenodo.23608832](https://doi.org/10.5281/zenodo.23608832). Zenodo will mint a separate DOI for v0.2.2 when that release is published.
+The concept DOI points at the latest archive: [10.5281/zenodo.23608831](https://doi.org/10.5281/zenodo.23608831). The v0.2.0 archive remains [10.5281/zenodo.23608832](https://doi.org/10.5281/zenodo.23608832).
 
 GitHub's **Cite this repository** button reads [CITATION.cff](CITATION.cff).
 

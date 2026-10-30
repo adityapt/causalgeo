@@ -83,7 +83,7 @@ C1 & Current code version & 0.2.2 \\
 \hline
 C2 & Permanent link to code/repository used for this code version & \metaurl{https://github.com/adityapt/causalgeo/releases/tag/v0.2.2} \\
 \hline
-C3 & Permanent link to Reproducible Capsule & \metaurl{https://doi.org/10.5281/zenodo.23608831} \\
+C3 & Permanent link to Reproducible Capsule & \metaurl{https://doi.org/10.5281/zenodo.23787152} \\
 \hline
 C4 & Legal Code License & MIT \\
 \hline
@@ -358,7 +358,7 @@ Aditya Puttaparthi Tirumala: Conceptualization, Methodology, Software, Validatio
 The author declares that he has no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
 
 \section*{Data availability}
-The impression paths are Google's public Meridian file \path{geo_all_channels.csv} \cite{meridiandata}. \texttt{examples/meridian\_conversions.py} runs the same split on Meridian's conversions column. That run has no known channel incrementality. It only shows the software on that file. The v0.2.2 release tag is \metaurl{https://github.com/adityapt/causalgeo/releases/tag/v0.2.2}. The Zenodo concept record, which points at the latest archive, is \metaurl{https://doi.org/10.5281/zenodo.23608831}. In \texttt{paper/}, set \texttt{PYTHONPATH} to \texttt{../src} and run \texttt{python3.11 reproduce.py}. Set \texttt{MPLCONFIGDIR} to a writable directory first if Matplotlib warns about its font cache. The script does that itself when the variable is unset. That rebuilds Tables~\ref{tab:cells}--\ref{tab:robustness} and the four figures, then checks them against the rounded values reported here. \texttt{python3.11 reproduce.py --fast} uses two draws per setting and only checks that the scripts finish. Table~\ref{tab:metadata} gives the repository links.
+The impression paths are Google's public Meridian file \path{geo_all_channels.csv} \cite{meridiandata}. \texttt{examples/meridian\_conversions.py} runs the same split on Meridian's conversions column. That run has no known channel incrementality. It only shows the software on that file. The archived v0.2.2 release is \metaurl{https://doi.org/10.5281/zenodo.23787152}. In \texttt{paper/}, set \texttt{PYTHONPATH} to \texttt{../src} and run \texttt{python3.11 reproduce.py}. Set \texttt{MPLCONFIGDIR} to a writable directory first if Matplotlib warns about its font cache. The script does that itself when the variable is unset. That rebuilds Tables~\ref{tab:cells}--\ref{tab:robustness} and the four figures, then checks them against the rounded values reported here. \texttt{python3.11 reproduce.py --fast} uses two draws per setting and only checks that the scripts finish. Table~\ref{tab:metadata} gives the repository links.
 
 \section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
 During the preparation of this work the author used Cursor, with the Grok language model, to draft and revise the manuscript and the example code. After using this tool, the author reviewed and edited the content as needed and takes full responsibility for the content of the published article.
