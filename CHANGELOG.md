@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A channel update whose posterior covariance is singular, or has a negative variance, stays on nonnegative slopes instead of failing. The update uses only the directions that covariance supports.
+
 ## 0.2.3 — 2026-11-06
 
 - `diagnose` reads the pretrend p-value of the primary metric. Before, it read the first metric's row.

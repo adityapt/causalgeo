@@ -37,6 +37,84 @@ def test_gaussian_mode_leaves_a_positive_posterior_unchanged():
     assert reported == pytest.approx(covariance)
 
 
+def test_gaussian_mode_keeps_the_free_slope_when_channels_are_correlated():
+    mode, se, reported = nonnegative_gaussian_mode(
+        np.array([-0.5, 0.2]),
+        np.array([[1.0, 0.8], [0.8, 1.0]]),
+    )
+
+    assert mode == pytest.approx([0.0, 0.6])
+    assert np.isnan(se[0])
+    assert se[1] == pytest.approx(0.6)
+    assert reported[1, 1] == pytest.approx(0.36)
+    assert reported[0, 0] == pytest.approx(0.0)
+
+
+def test_gaussian_mode_moves_a_tied_pair_along_its_shared_direction():
+    with pytest.warns(UserWarning, match="not positive definite"):
+        mode, se, reported = nonnegative_gaussian_mode(
+            np.array([-1.0, 0.5]),
+            np.array([[1.0, 1.0], [1.0, 1.0]]),
+        )
+
+    assert mode == pytest.approx([0.0, 1.5])
+    assert np.isnan(se[0])
+    assert se[1] == pytest.approx(0.0, abs=1e-8)
+    assert np.linalg.eigvalsh(reported).min() >= -1e-8
+
+
+def test_gaussian_mode_drops_a_negative_variance():
+    with pytest.warns(UserWarning, match="not positive definite"):
+        mode, se, reported = nonnegative_gaussian_mode(
+            np.array([-1.0, 0.4]),
+            np.diag([1.0, -1e-12]),
+        )
+
+    assert mode == pytest.approx([0.0, 0.4])
+    assert np.isnan(se[0])
+    assert reported[1, 1] >= -1e-8
+    assert np.linalg.eigvalsh(reported).min() >= -1e-8
+
+
+def test_gaussian_mode_of_a_point_mass_below_zero_is_zero():
+    with pytest.warns(UserWarning) as caught:
+        mode, se, reported = nonnegative_gaussian_mode(
+            np.array([-2.0, -3.0]),
+            np.zeros((2, 2)),
+        )
+    messages = " ".join(str(item.message) for item in caught)
+    assert "not positive definite" in messages
+    assert "no nonnegative slope lies on the posterior support" in messages
+
+    assert mode == pytest.approx([0.0, 0.0])
+    assert np.isnan(se).all()
+    assert reported == pytest.approx(np.zeros((2, 2)))
+
+
+def test_precise_bundle_with_negative_slopes_stays_nonnegative():
+    with pytest.warns(UserWarning) as caught:
+        result = bayesian_channel_allocation(
+            prior_mean={"Search": -2.0, "Video": 0.4},
+            prior_covariance=np.eye(2),
+            bundle_effects=pd.DataFrame([{"cell": "1", "coef": 8.0, "std_err": 1e-8}]),
+            withheld=pd.DataFrame(
+                [
+                    {"cell": "1", "channel": "Search", "withheld": 1.0},
+                    {"cell": "1", "channel": "Video", "withheld": 1.0},
+                ]
+            ),
+        )
+    messages = " ".join(str(item.message) for item in caught)
+    assert "not positive definite" in messages
+    assert "no nonnegative slope lies on the posterior support" in messages
+
+    assert (result.channels["posterior_coef"] >= -1e-8).all()
+    assert result.channels["posterior_coef"].sum() == pytest.approx(0.0)
+    assert np.isnan(result.channels["posterior_std_err"]).all()
+    covariance = result.posterior_covariance.to_numpy()
+    assert np.linalg.eigvalsh(covariance).min() >= -1e-8
+
+
 def test_gaussian_mode_holds_a_negative_channel_at_zero():
     mode, se, reported = nonnegative_gaussian_mode(
         np.array([-0.4, 0.3]),
