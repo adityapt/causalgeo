@@ -76,6 +76,7 @@ def _fit_twoway_clustered(
     entity_col: str,
     time_col: str,
     formula: str,
+    cov_type: str = "cluster",
 ) -> PanelEstimate:
     missing = [c for c in [outcome_col, entity_col, time_col, *treatment_cols] if c not in panel.columns]
     if missing:
@@ -98,10 +99,15 @@ def _fit_twoway_clustered(
         raise ValueError("Treatment columns are collinear with entity/time fixed effects")
 
     model = sm.OLS(y, x, hasconst=False)
-    fitted = model.fit(
-        cov_type="cluster",
-        cov_kwds={"groups": work.loc[x.index, entity_col]},
-    )
+    if cov_type == "cluster":
+        fitted = model.fit(
+            cov_type="cluster",
+            cov_kwds={"groups": work.loc[x.index, entity_col]},
+        )
+    elif cov_type == "HC1":
+        fitted = model.fit(cov_type="HC1")
+    else:
+        raise ValueError("cov_type must be 'cluster' or 'HC1'")
     ci = fitted.conf_int()
     ci.columns = ["ci_lower", "ci_upper"]
     return PanelEstimate(
@@ -111,7 +117,7 @@ def _fit_twoway_clustered(
         conf_int=ci,
         nobs=int(fitted.nobs),
         n_entities=int(work[entity_col].nunique()),
-        cov_type="cluster",
+        cov_type=cov_type,
         formula=formula,
         entity_col=entity_col,
         time_col=time_col,
@@ -131,7 +137,6 @@ def run_panel_ols_did(
     ``cluster_entity=False`` still absorbs DMA and time FE but uses heteroskedasticity-
     robust (HC1) SEs. That is not recommended for geo panels.
     """
-    del cluster_entity  # clustering by DMA is the supported inference path
     treatment_cols = _as_list(treatment_col)
     formula = f"{outcome_col} ~ {' + '.join(treatment_cols)} + C({dma_col}) + C({date_col})"
     return _fit_twoway_clustered(
@@ -141,6 +146,7 @@ def run_panel_ols_did(
         entity_col=dma_col,
         time_col=date_col,
         formula=formula,
+        cov_type="cluster" if cluster_entity else "HC1",
     )
 
 

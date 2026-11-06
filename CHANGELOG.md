@@ -3,6 +3,8 @@
 ## Unreleased
 
 - A channel update whose posterior covariance is singular, or has a negative variance, stays on nonnegative slopes instead of failing. The update uses only the directions that covariance supports.
+- The stability check refits against the same cell lift as the channel split, including a lift with a still-on impression shift removed. Leaving one market out estimates that cell lift again without the market.
+- `run_panel_ols_did(cluster_entity=False)` uses HC1 standard errors. Before, the argument was ignored and the standard errors stayed clustered by market.
 
 ## 0.2.3 — 2026-11-06
 

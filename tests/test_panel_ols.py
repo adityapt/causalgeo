@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 import statsmodels.api as sm
 
 from causalgeo.panel_ols import run_panel_ols_did
@@ -38,3 +39,23 @@ def test_unbalanced_panel_matches_market_and_date_dummies():
     panel = _panel(drop_early=True)
     estimate = run_panel_ols_did(panel, "sales", "did", dma_col="geo", date_col="date")
     assert abs(float(estimate.params["did"]) - _dummy_coef(panel)) < 1e-6
+
+
+def test_cluster_entity_false_uses_hc1_standard_errors():
+    rng = np.random.default_rng(0)
+    rows = []
+    for geo in range(10):
+        market_shock = float(rng.normal(0, 4))
+        for day in range(16):
+            treated = float(geo < 5 and day >= 8)
+            sales = 3.0 * treated + (market_shock if day >= 8 else 0.0) + float(rng.normal(0, 0.1))
+            rows.append({"geo": geo, "date": day, "sales": sales, "did": treated})
+    panel = pd.DataFrame(rows)
+    clustered = run_panel_ols_did(panel, "sales", "did", dma_col="geo", date_col="date")
+    robust = run_panel_ols_did(
+        panel, "sales", "did", dma_col="geo", date_col="date", cluster_entity=False
+    )
+    assert clustered.cov_type == "cluster"
+    assert robust.cov_type == "HC1"
+    assert float(robust.params["did"]) == pytest.approx(float(clustered.params["did"]))
+    assert abs(float(robust.bse["did"]) - float(clustered.bse["did"])) > 0.05

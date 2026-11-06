@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from causalgeo.design import design_concurrent_test
-from causalgeo.calibrated import disentangle
+from causalgeo.calibrated import disentangle, fit_channel_model
 from causalgeo.identified import estimate_identified
 
 
@@ -109,3 +109,32 @@ def test_requested_exposure_adjustment_changes_only_the_flagged_cell():
     assert abs(adjusted["2"] - plain_cells["2"]) > 1
     assert abs(adjusted["1"] - plain_cells["1"]) < 1e-8
     assert abs(adjusted["3"] - plain_cells["3"]) < 1e-8
+
+
+def test_stability_uses_the_cleaned_lift_and_reestimates_without_one_market(monkeypatch):
+    design, outcomes, impressions = _world()
+    plain = estimate_identified(design, outcomes, outcome="sales", treatment_start="2025-01-21")
+    plain_cells = plain.cells.set_index("cell")["coef"].astype(float)
+    recorded = []
+    original = fit_channel_model
+
+    def spy(*args, **kwargs):
+        recorded.append(args[2].cells.set_index("cell")["coef"].astype(float).copy())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr("causalgeo.calibrated.fit_channel_model", spy)
+    disentangle(
+        design,
+        outcomes,
+        impressions,
+        outcome="sales",
+        treatment_start="2025-01-21",
+        check_stability=True,
+    )
+    assert len(recorded) == 3
+    main, weaker, left_out = (frame.rename(index=str) for frame in recorded)
+    plain_cells = plain_cells.rename(index=str)
+    assert abs(main["2"] - weaker["2"]) < 1e-8
+    assert abs(main["2"] - plain_cells["2"]) > 1
+    assert left_out.index.equals(main.index)
+    assert not np.allclose(left_out, main, atol=1e-6)

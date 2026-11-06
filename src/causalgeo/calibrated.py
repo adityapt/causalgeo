@@ -95,8 +95,99 @@ def disentangle(
     ``adjust_exposure`` is true. When a still-on channel's impressions moved
     enough to flag, the channel split uses the cell total after that shift is
     removed. ``check_stability`` refits with a weaker calibration weight and
-    without one influential market.
+    without one influential market. Both refits use the same cell lift as the
+    split. The leave-one-out refit estimates that lift again without the market.
     """
+    raw, exposure, target = _bundle_views(
+        design,
+        outcomes,
+        impressions,
+        treatment_start,
+        outcome,
+        geo_col,
+        date_col,
+        channel_col,
+        impression_col,
+        material,
+    )
+    warn_if_impressions_missing(impressions, impression_col)
+    flagged = bool(len(exposure) and bool(exposure["adjust"].any()))
+    exposure["removed_from_split"] = exposure["adjust"] if flagged else False
+    if adjust_exposure:
+        exposure.loc[exposure["adjust"], "applied"] = True
+        reported = target
+    else:
+        reported = raw
+    model = fit_channel_model(
+        outcomes,
+        impressions,
+        target,
+        design,
+        treatment_start=treatment_start,
+        outcome=outcome,
+        geo_col=geo_col,
+        date_col=date_col,
+        channel_col=channel_col,
+        impression_col=impression_col,
+        decay=decay,
+        warn_missing=False,
+        copy_tolerance=copy_tolerance,
+    )
+    experimental = raw.cells.set_index("cell")["coef"]
+    model = ChannelModel(
+        channels=model.channels,
+        bundles=model.bundles.assign(
+            experimental_effect=model.bundles["cell"].astype(str).map(experimental)
+        ),
+        daily=model.daily,
+        exposure=model.exposure,
+        cells=model.cells,
+    )
+    if check_stability:
+        model = ChannelModel(
+            channels=_mark_unstable(
+                model.channels,
+                outcomes,
+                impressions,
+                target,
+                design,
+                treatment_start,
+                outcome,
+                geo_col,
+                date_col,
+                channel_col,
+                impression_col,
+                decay,
+                copy_tolerance,
+                material,
+            ),
+            bundles=model.bundles,
+            daily=model.daily,
+            exposure=pd.DataFrame(),
+            cells=model.cells,
+        )
+    return ChannelModel(
+        channels=model.channels,
+        bundles=model.bundles,
+        daily=model.daily,
+        exposure=exposure,
+        cells=reported.cells,
+    )
+
+
+def _bundle_views(
+    design,
+    outcomes,
+    impressions,
+    treatment_start,
+    outcome,
+    geo_col,
+    date_col,
+    channel_col,
+    impression_col,
+    material,
+):
+    """Return the raw cell lift, the exposure check, and the lift used for the split."""
     identified = estimate_identified(
         design,
         outcomes,
@@ -133,69 +224,8 @@ def disentangle(
         material=material,
         apply=True,
     )
-    warn_if_impressions_missing(impressions, impression_col)
     flagged = bool(len(exposure) and bool(exposure["adjust"].any()))
-    target = cleaned if flagged else raw
-    exposure["removed_from_split"] = exposure["adjust"] if flagged else False
-    if adjust_exposure:
-        exposure.loc[exposure["adjust"], "applied"] = True
-        identified = cleaned
-    else:
-        identified = raw
-    model = fit_channel_model(
-        outcomes,
-        impressions,
-        target,
-        design,
-        treatment_start=treatment_start,
-        outcome=outcome,
-        geo_col=geo_col,
-        date_col=date_col,
-        channel_col=channel_col,
-        impression_col=impression_col,
-        decay=decay,
-        warn_missing=False,
-        copy_tolerance=copy_tolerance,
-    )
-    experimental = raw.cells.set_index("cell")["coef"]
-    model = ChannelModel(
-        channels=model.channels,
-        bundles=model.bundles.assign(
-            experimental_effect=model.bundles["cell"].astype(str).map(experimental)
-        ),
-        daily=model.daily,
-        exposure=model.exposure,
-        cells=model.cells,
-    )
-    if check_stability:
-        model = ChannelModel(
-            channels=_mark_unstable(
-                model.channels,
-                outcomes,
-                impressions,
-                identified,
-                design,
-                treatment_start,
-                outcome,
-                geo_col,
-                date_col,
-                channel_col,
-                impression_col,
-                decay,
-                copy_tolerance,
-            ),
-            bundles=model.bundles,
-            daily=model.daily,
-            exposure=pd.DataFrame(),
-            cells=model.cells,
-        )
-    return ChannelModel(
-        channels=model.channels,
-        bundles=model.bundles,
-        daily=model.daily,
-        exposure=exposure,
-        cells=identified.cells,
-    )
+    return raw, exposure, cleaned if flagged else raw
 
 
 def fit_channel_model(
@@ -735,6 +765,7 @@ def _mark_unstable(
     impression_col,
     decay,
     copy_tolerance: float = 1e-6,
+    material: float = 0.10,
 ) -> pd.DataFrame:
     """Refit under a weaker calibration weight and without one market."""
     variants = [
@@ -757,23 +788,41 @@ def _mark_unstable(
     ]
     geo = _influential_geo(outcomes, design, treatment_start, outcome, geo_col, date_col)
     if geo is not None:
-        variants.append(
-            fit_channel_model(
-                outcomes.loc[outcomes[geo_col] != geo],
-                impressions.loc[impressions[geo_col] != geo],
-                identified,
+        kept_outcomes = outcomes.loc[outcomes[geo_col] != geo]
+        kept_impressions = impressions.loc[impressions[geo_col] != geo]
+        try:
+            _, _, left_out = _bundle_views(
                 design,
+                kept_outcomes,
+                kept_impressions,
                 treatment_start,
                 outcome,
-                geo_col=geo_col,
-                date_col=date_col,
-                channel_col=channel_col,
-                impression_col=impression_col,
-                decay=decay,
-                warn_missing=False,
-                copy_tolerance=copy_tolerance,
+                geo_col,
+                date_col,
+                channel_col,
+                impression_col,
+                material,
             )
-        )
+        except ValueError:
+            left_out = None
+        if left_out is not None:
+            variants.append(
+                fit_channel_model(
+                    kept_outcomes,
+                    kept_impressions,
+                    left_out,
+                    design,
+                    treatment_start,
+                    outcome,
+                    geo_col=geo_col,
+                    date_col=date_col,
+                    channel_col=channel_col,
+                    impression_col=impression_col,
+                    decay=decay,
+                    warn_missing=False,
+                    copy_tolerance=copy_tolerance,
+                )
+            )
     marked = channels.copy()
     base = marked.set_index("channel")
     for channel in base.index:

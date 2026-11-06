@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import Optional
 
 import numpy as np
@@ -70,23 +69,6 @@ def contingency_table(
         .fillna(0.0)
     )
     observed = table.to_numpy(dtype=float)
-    if observed.sum() == 0 or (observed.sum(axis=0) == 0).any() or (observed.sum(axis=1) == 0).any():
-        warnings.warn(
-            "a row or column of the contingency table is empty, so no test was run",
-            UserWarning,
-            stacklevel=2,
-        )
-        nan = float("nan")
-        return table, {
-            "chi2": nan,
-            "p_chi2": nan,
-            "p_fisher": nan,
-            "p_raw": nan,
-            "dof": nan,
-            "min_expected": nan,
-            "method": "undefined",
-            "residual_max": nan,
-        }
     chi2, p_chi, dof, expected = stats.chi2_contingency(observed)
     use_fisher = bool(expected.min() < 5) and observed.shape == (2, 2)
     p_fisher = float("nan")
