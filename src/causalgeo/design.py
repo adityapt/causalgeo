@@ -44,6 +44,7 @@ def design_concurrent_test(
     assignment = _assign_stratified(
         geos, geo_col, stratum_col, n_cells=len(bundles), control_share=control_share, seed=seed
     )
+    _check_cells_filled(assignment, len(bundles))
     schedule = _schedule(channels, bundles)
     separation = _separation(schedule)
     return ConcurrentDesign(assignment=assignment, schedule=schedule, separation=separation)
@@ -63,6 +64,7 @@ def design_from_assignment(
     """
     if not bundles or any(len(bundle) == 0 for bundle in bundles):
         raise ValueError("each cell needs at least one channel turned off")
+    _check_channels_and_bundles(channels, bundles)
     missing = [col for col in (geo_col, cell_col) if col not in assignment.columns]
     if missing:
         raise ValueError(f"assignment is missing {missing}")
@@ -72,8 +74,7 @@ def design_from_assignment(
     unknown = sorted(set(frame[cell_col]) - expected)
     if unknown:
         raise ValueError(f"cells must be control or 1..{len(bundles)}; found {unknown}")
-    if not frame[cell_col].eq("control").any():
-        raise ValueError("the assignment has no control markets")
+    _check_cells_filled(frame.rename(columns={cell_col: "cell"}), len(bundles))
     labeled = frame.rename(columns={cell_col: "cell"})
     labeled["role"] = np.where(labeled["cell"].eq("control"), "control", "test")
     schedule = _schedule(channels, bundles)
@@ -91,19 +92,33 @@ def _check_inputs(geos, channels, bundles, geo_col, stratum_col, control_share) 
         raise ValueError("geos is empty")
     if geos[geo_col].duplicated().any():
         raise ValueError(f"'{geo_col}' has duplicate markets")
-    if not channels:
-        raise ValueError("channels is empty")
-    if len(set(channels)) != len(channels):
-        raise ValueError("channels has duplicates")
     if not bundles:
         raise ValueError("bundles is empty; pass one channel list per cell")
     if not 0 <= control_share < 1:
         raise ValueError("control_share must be between 0 and 1, not including 1")
+    _check_channels_and_bundles(channels, bundles)
+
+
+def _check_channels_and_bundles(channels, bundles) -> None:
+    if not channels:
+        raise ValueError("channels is empty")
+    if len(set(channels)) != len(channels):
+        raise ValueError("channels has duplicates")
     known = set(channels)
     for bundle in bundles:
         unknown = set(bundle) - known
         if unknown:
             raise ValueError(f"bundle has channels that are not in the channel list: {sorted(unknown)}")
+
+
+def _check_cells_filled(assignment: pd.DataFrame, n_cells: int) -> None:
+    """Refuse an assignment with no control market or an empty test cell."""
+    cells = assignment["cell"].astype(str)
+    if not cells.eq("control").any():
+        raise ValueError("the assignment has no control markets")
+    empty = [str(k) for k in range(1, n_cells + 1) if not cells.eq(str(k)).any()]
+    if empty:
+        raise ValueError(f"cells {empty} have no markets")
 
 
 def _assign_stratified(geos, geo_col, stratum_col, n_cells, control_share, seed) -> pd.DataFrame:

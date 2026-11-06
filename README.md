@@ -19,7 +19,7 @@ A geo holdout estimates the lift of a bundle. It does not estimate how many sale
 
 ### Channel split
 
-- **Model-assisted, and labeled as such.** Channel responses come from impression history, pulled toward the measured bundle lifts. They are not channel-level holdout estimates.
+- **Model-assisted, and labeled as such.** Channel responses come from impression history, pulled toward the measured bundle lifts. They are not channel-level holdout estimates. A channel slope is sales per impression and is held at zero when the line would slope down. The bundle lift stays free.
 - **A channel stays blank** when the flight never turns it off, when two impression paths are copies, or when the design cannot separate it.
 - **The gap stays visible.** The bundle table shows the measured lift next to the lift implied by the channel responses.
 
@@ -38,10 +38,10 @@ One bundled test is one equation. Eight channels in that bundle are not eight ex
 
 ### Installation
 
-The release to install is v0.2.2. It is not on PyPI yet.
+The release to install is v0.2.3. It is not on PyPI yet.
 
 ```bash
-pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.2.2"
+pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.2.3"
 ```
 
 To work on the repository:

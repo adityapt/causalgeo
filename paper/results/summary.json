@@ -8,14 +8,14 @@
     "3": 8,
     "control": 16
   },
-  "max_abs_pct_error": 0.20876085159637556,
+  "max_abs_pct_error": 0.20876085159653818,
   "adjustments": [
     {
       "cell": "2",
       "channel": "Channel1",
       "impression_shift": -118115.42276785715,
-      "sales_shift": -59.14577824480671,
-      "share": 0.14208345082968152
+      "sales_shift": -59.14577824480669,
+      "share": 0.14208345082968146
     }
   ]
 }

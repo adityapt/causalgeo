@@ -149,3 +149,76 @@ def test_sensitivity_recovers_planted_att():
     ).diagnose([MetricSpec("conversions", kind="continuous", primary=True)])
     for _, row in report.sensitivity.iterrows():
         assert row["lift"] == pytest.approx(-4.0, abs=0.6)
+
+
+def _experiment(data, treat, ctrl, t0):
+    return GeoExperiment(data, AssignmentMap.from_sets(treat, ctrl), t0, spend="spend")
+
+
+def test_pretrend_gate_reads_the_primary_metric_not_the_first():
+    treat = [f"G{i}" for i in range(8)]
+    ctrl = [f"C{i}" for i in range(8)]
+    data, t0 = _kpi_panel(-4.0, treat, ctrl)
+    data = data.copy()
+    day = (data["date"] - data["date"].min()).dt.days
+    data["other"] = 20.0 + np.where(data["location"].isin(treat), 2.0 * day, 0.0)
+    report = diagnose(
+        _experiment(data, treat, ctrl, t0),
+        [MetricSpec("other", kind="continuous"), MetricSpec("conversions", kind="continuous", primary=True)],
+        Intervention.GO_DARK,
+    )
+    tests = report.metric_tests
+    primary_p = float(
+        tests.loc[(tests["test"] == "pretrend_interaction") & (tests["metric"] == "conversions"), "p_bh"].iloc[0]
+    )
+    other_p = float(
+        tests.loc[(tests["test"] == "pretrend_interaction") & (tests["metric"] == "other"), "p_bh"].iloc[0]
+    )
+    assert other_p < 0.05 <= primary_p
+    gate = report.gates.set_index("check").loc["pretrend"]
+    assert gate["status"] == "pass"
+
+
+def test_smd_gate_is_skipped_when_hedges_g_cannot_be_computed():
+    treat = ["G0"]
+    ctrl = [f"C{i}" for i in range(6)]
+    data, t0 = _kpi_panel(-4.0, treat, ctrl)
+    report = diagnose(
+        _experiment(data, treat, ctrl, t0),
+        [MetricSpec("conversions", kind="continuous", primary=True)],
+        Intervention.GO_DARK,
+    )
+    assert report.gates.set_index("check").loc["smd", "status"] == "skip"
+
+
+def test_diagnose_rejects_an_unknown_adjustment():
+    treat = [f"G{i}" for i in range(4)]
+    ctrl = [f"C{i}" for i in range(4)]
+    data, t0 = _kpi_panel(-4.0, treat, ctrl)
+    with pytest.raises(ValueError, match="adjust must be"):
+        diagnose(
+            _experiment(data, treat, ctrl, t0),
+            [MetricSpec("conversions", kind="continuous", primary=True)],
+            Intervention.GO_DARK,
+            adjust="bonferroni",
+        )
+
+
+def test_rate_test_with_no_successes_returns_no_p_value():
+    from causalgeo.metric_tests import rate_two_by_two
+
+    with pytest.warns(UserWarning, match="empty"):
+        _, stats_d = rate_two_by_two(0, 100, 0, 100)
+    assert np.isnan(stats_d["p_raw"])
+
+
+def test_synthetic_control_interval_warns_that_it_is_too_narrow():
+    treat = [f"G{i}" for i in range(4)]
+    ctrl = [f"C{i}" for i in range(6)]
+    data, t0 = _kpi_panel(-4.0, treat, ctrl)
+    with pytest.warns(UserWarning, match="synthetic-control interval"):
+        diagnose(
+            _experiment(data, treat, ctrl, t0),
+            [MetricSpec("conversions", kind="continuous", primary=True)],
+            Intervention.GO_DARK,
+        )

@@ -95,6 +95,12 @@ def diagnose(
     adjust: str = "bh",
     bh_q: float = 0.10,
 ) -> DiagnosticsReport:
+    """Run the pretest checks and gates.
+
+    ``adjust`` is ``"bh"`` or ``"none"``. Benjamini-Hochberg adjusted p-values do
+    not depend on ``bh_q``, so that argument does not change the output and is
+    kept only so existing calls still work.
+    """
     if isinstance(intervention, str):
         intervention = Intervention(intervention.lower().replace("-", "_"))
     if metrics is None:
@@ -184,6 +190,7 @@ def diagnose(
     pretest_rows = []
     contingency: dict[str, pd.DataFrame] = {}
 
+    primary_g: Optional[float] = None
     for spec in metrics:
         if spec.kind == "categorical":
             cat_src = experiment.data.copy()
@@ -248,6 +255,9 @@ def diagnose(
             t, c = _geo_means(pre, col, location)
 
         g_hat = hedges_g(t, c)
+        if spec is primary:
+            primary_g = g_hat
+        control_var = float(np.nanvar(c, ddof=1)) if len(t) > 1 and len(c) > 1 else float("nan")
         tests = welch_mannwhitney(t, c)
         rho = _spearman_series(pre, col if spec.kind != "rate" else spec.successes, date)
         trend = _pretrend(pre, col if spec.kind != "rate" else spec.successes, location, date)
@@ -262,9 +272,9 @@ def diagnose(
                 "sd_treatment": float(np.nanstd(t, ddof=1)) if len(t) > 1 else float("nan"),
                 "sd_control": float(np.nanstd(c, ddof=1)) if len(c) > 1 else float("nan"),
                 "hedges_g": g_hat,
-                "variance_ratio": float(np.nanvar(t, ddof=1) / np.nanvar(c, ddof=1))
-                if len(c) > 1 and np.nanvar(c, ddof=1) > 0
-                else float("nan"),
+                "variance_ratio": (
+                    float(np.nanvar(t, ddof=1) / control_var) if control_var > 0 else float("nan")
+                ),
                 "spearman_tbr_series": rho,
             }
         )
@@ -301,7 +311,24 @@ def diagnose(
             warnings.append("pretest_imbalance")
 
     if not any(g["check"] == "smd" for g in gates):
-        gates.append({"check": "smd", "status": "pass", "detail": "primary |Hedges g| ≤ 0.25"})
+        if primary_g is None:
+            gates.append(
+                {
+                    "check": "smd",
+                    "status": "skip",
+                    "detail": f"no Hedges g for {primary.name}; the primary metric is not compared by geo means",
+                }
+            )
+        elif not np.isfinite(primary_g):
+            gates.append(
+                {
+                    "check": "smd",
+                    "status": "skip",
+                    "detail": f"Hedges g could not be computed for {primary.name}; each arm needs at least two geos",
+                }
+            )
+        else:
+            gates.append({"check": "smd", "status": "pass", "detail": "primary |Hedges g| ≤ 0.25"})
 
     # TBR fit + placebo + sensitivity on primary outcome column
     outcome_col = primary.value_column if primary.kind != "rate" else experiment.conversions
@@ -438,6 +465,8 @@ def diagnose(
     )
 
     tests_df = pd.DataFrame(p_rows)
+    if adjust not in {"bh", "none"}:
+        raise ValueError("adjust must be 'bh' or 'none'")
     if not tests_df.empty and adjust == "bh":
         tests_df["p_bh"] = benjamini_hochberg(tests_df["p_raw"].tolist(), q=bh_q)
         tests_df["family"] = "diagnose"
@@ -445,9 +474,24 @@ def diagnose(
         tests_df["p_bh"] = tests_df["p_raw"]
         tests_df["family"] = "diagnose"
 
-    pretrend_bh = tests_df.loc[tests_df["test"] == "pretrend_interaction", "p_bh"] if not tests_df.empty else pd.Series(dtype=float)
+    pretrend_bh = (
+        tests_df.loc[
+            (tests_df["test"] == "pretrend_interaction") & (tests_df["metric"] == primary.name),
+            "p_bh",
+        ]
+        if not tests_df.empty
+        else pd.Series(dtype=float)
+    )
     p_use = float(pretrend_bh.iloc[0]) if len(pretrend_bh) else float("nan")
-    if np.isfinite(p_use) and p_use < 0.05:
+    if not np.isfinite(p_use):
+        gates.append(
+            {
+                "check": "pretrend",
+                "status": "skip",
+                "detail": f"no pretrend p-value for {primary.name}",
+            }
+        )
+    elif p_use < 0.05:
         gates.append(
             {
                 "check": "pretrend",

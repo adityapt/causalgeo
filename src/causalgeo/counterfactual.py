@@ -8,6 +8,7 @@ or with a weighted donor pool (SC) before the intervention.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Optional
 
 import numpy as np
@@ -223,7 +224,18 @@ def estimate_sc(
     """Synthetic control on the treated-geo mean, donors = control geos.
 
     Weights are nonnegative and sum to one, fit on pretest dates only.
+
+    The standard error comes from the pretest residual spread alone. It leaves
+    out test-period shocks and autocorrelation, and in simulation the 95 percent
+    interval covered the true effect about half the time. Read the interval as a
+    description of pretest fit. Use the TBR or SDID estimate for inference.
     """
+    warnings.warn(
+        "the synthetic-control interval uses the pretest residual spread only and is "
+        "too narrow; do not use it for inference",
+        UserWarning,
+        stacklevel=2,
+    )
     pre = panel.loc[panel["is_post"] == 0]
     post = panel.loc[panel["is_post"] == 1]
     if pre.empty or post.empty:

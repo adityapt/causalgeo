@@ -11,7 +11,8 @@ in the manuscript. The full run refits every Monte Carlo setting.
 
 That uses two draws per setting, writes to results_fast/, and only checks that
 the scripts finish. It does not compare the published numbers. Continuous
-integration uses this shorter run.
+integration uses this shorter run, and tests/test_manuscript_numbers.py checks
+the saved results against the published numbers without refitting.
 """
 
 from __future__ import annotations
@@ -168,21 +169,37 @@ def _check_tables() -> None:
     displayed.loc[confounded, "median_abs_error_pct"] = displayed.loc[confounded, "max_abs_error_pct"]
     reported_robust = _rounded(
         displayed,
-        {"median_abs_error_pct": 2, "coverage": 3, "median_abs_bundle_gap_pct": 2},
-    )[["scenario", "runs", "median_abs_error_pct", "coverage", "median_abs_bundle_gap_pct"]]
+        {
+            "median_abs_error_pct": 2,
+            "coverage": 3,
+            "coverage_mc_lower": 3,
+            "coverage_mc_upper": 3,
+            "median_abs_bundle_gap_pct": 2,
+        },
+    )[
+        [
+            "scenario",
+            "runs",
+            "median_abs_error_pct",
+            "coverage",
+            "coverage_mc_lower",
+            "coverage_mc_upper",
+            "median_abs_bundle_gap_pct",
+        ]
+    ]
     expected_robust = pd.DataFrame(
         [
-            ["heterogeneous", 30, 4.81, 0.344, 4.01],
-            ["incomplete", 30, 0.22, 0.967, 2.83],
-            ["redistribution", 30, 0.22, 0.967, 12.60],
-            ["redistribution_adjusted", 30, 0.22, 0.967, 12.60],
-            ["serial", 30, 0.43, 0.956, 3.56],
-            ["observational_only", 30, 0.22, 0.967, 2.12],
-            ["calibrated", 30, 0.22, 0.967, 2.13],
-            ["confounded", 30, 49.94, 0.644, 21.12],
-            ["collinear_weak_observational", 30, 44.64, 0.956, 43.33],
-            ["collinear_weak_calibrated", 30, 10.52, 0.989, 8.79],
-            ["experiment_only", 30, 11.16, 1.000, float("nan")],
+            ["heterogeneous", 30, 4.81, 0.344, 0.248, 0.441, 4.01],
+            ["incomplete", 30, 0.22, 0.967, 0.930, 1.000, 2.83],
+            ["redistribution", 30, 0.22, 0.967, 0.930, 1.000, 12.60],
+            ["redistribution_adjusted", 30, 0.22, 0.967, 0.930, 1.000, 12.60],
+            ["serial", 30, 0.43, 0.956, 0.914, 0.997, 3.56],
+            ["observational_only", 30, 0.22, 0.967, 0.930, 1.000, 2.12],
+            ["calibrated", 30, 0.22, 0.967, 0.930, 1.000, 2.13],
+            ["confounded", 30, 49.94, 0.644, 0.614, 0.675, 21.12],
+            ["collinear_weak_observational", 30, 30.94, 0.833, 0.748, 0.919, 37.73],
+            ["collinear_weak_calibrated", 30, 10.52, 0.989, 0.967, 1.000, 8.79],
+            ["experiment_only", 30, 11.16, 1.000, 1.000, 1.000, float("nan")],
         ],
         columns=reported_robust.columns,
     )
@@ -194,8 +211,8 @@ def _check_tables() -> None:
         r'(?m)^version = "([^"]+)"',
         (ROOT / "pyproject.toml").read_text(),
     ).group(1)
-    if version != "0.2.2":
-        raise AssertionError(f"manuscript metadata C1 says 0.2.2, pyproject says {version}")
+    if version != "0.2.3":
+        raise AssertionError(f"manuscript metadata C1 says 0.2.3, pyproject says {version}")
     alone = pd.read_csv(OUT / "experiment_only.csv")
     reported_alone = pd.DataFrame(
         {
@@ -219,14 +236,50 @@ def _check_tables() -> None:
     refused = pd.read_csv(OUT / "refused.csv")
     reported_refused = _rounded(refused, {"per_10000": 2})
     expected_refused = pd.DataFrame(
-        [["Pair kept as one control", 0.97], ["Pair dropped from the fit", 3.02]],
+        [["Pair kept as one control", 1.00], ["Pair dropped from the fit", 3.03]],
         columns=["analysis", "per_10000"],
     )
     pd.testing.assert_frame_equal(reported_refused[["analysis", "per_10000"]], expected_refused)
+    _check_prose()
     for name in ("bundle_contrast.pdf", "separation.pdf", "refused.pdf", "failures.pdf"):
         path = OUT / name
         if path.stat().st_size < 1000:
             raise AssertionError(f"{name} was not written")
+
+
+def _check_prose() -> None:
+    """Check the rounded figures that appear in the text rather than a table cell."""
+    bundles = pd.read_csv(OUT / "bundles.csv")
+    gap_pct = (bundles["gap"].abs() / bundles["measured_effect"].abs() * 100).round(1)
+    if gap_pct.tolist() != [2.6, 0.8, 0.9]:
+        raise AssertionError(f"bundle gaps are {gap_pct.tolist()}, manuscript says 2.6, 0.8, and 0.9")
+    cells = pd.read_csv(OUT / "cells.csv")
+    joined = bundles.merge(cells[["cell", "ci_lower", "ci_upper"]], on="cell")
+    inside = joined["predicted_effect"].between(joined["ci_lower"], joined["ci_upper"])
+    if not bool(inside.all()):
+        raise AssertionError("a model total sits outside its holdout interval")
+    still_on = pd.read_csv(OUT / "exposure.csv")
+    still_on = still_on.loc[still_on["cell"].astype(str) == "2"].iloc[0]
+    sales_shift = round(float(still_on["sales_shift"]))
+    if sales_shift != -59:
+        raise AssertionError(f"still-on sales shift is {sales_shift}, manuscript says -59")
+    share_of_lift = round(abs(float(still_on["sales_shift"]) / float(still_on["bundle_effect"])) * 100)
+    if share_of_lift != 19:
+        raise AssertionError(f"still-on share of the unadjusted lift is {share_of_lift}, manuscript says 19")
+    share_of_scale = round(float(still_on["share"]) * 100)
+    if share_of_scale != 14:
+        raise AssertionError(f"still-on share of the pre-test scale is {share_of_scale}, manuscript says 14")
+    robust = pd.read_csv(OUT / "robustness.csv").set_index("scenario")
+    for scenario in ("redistribution", "redistribution_adjusted"):
+        moved = round(float(robust.loc[scenario, "median_abs_reallocation_pct"]), 1)
+        if moved != 52.9:
+            raise AssertionError(f"{scenario} reallocation is {moved}, manuscript says 52.9")
+    history = round(float(robust.loc["confounded", "observational_max_abs_error_pct"]), 1)
+    if history != 50.0:
+        raise AssertionError(f"confounded impression-history error is {history}, manuscript says 50.0")
+    confounder_gap = round(float(robust.loc["confounded", "median_abs_bundle_gap_pct"]))
+    if confounder_gap != 21:
+        raise AssertionError(f"confounded bundle gap is {confounder_gap}, manuscript says 21")
 
 
 def _redirect(out: Path, n_seeds: int | None) -> None:

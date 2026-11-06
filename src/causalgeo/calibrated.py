@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from causalgeo.design import ConcurrentDesign
+from causalgeo.nonnegative import nonnegative_least_squares
 from causalgeo.exposure import adjust_for_exposure, warn_if_impressions_missing, _sum_or_missing
 from causalgeo.identified import IdentifiedEstimate, estimate_identified
 
@@ -270,7 +271,9 @@ def experiment_only_split(
     """Solve channel slopes from the cell totals and the withheld impressions.
 
     Observational market-weeks do not enter. A channel the design never
-    turns off has no column in the system and stays blank.
+    turns off has no column in the system and stays blank. A channel that the
+    cells cannot separate from the others also stays blank. A slope that would
+    be negative is held at zero.
     """
     transformed = _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay)
     channels = _channel_list(transformed, channel_col)
@@ -297,15 +300,34 @@ def experiment_only_split(
         alive = [index for index in range(len(channels)) if np.max(np.abs(matrix[:, index])) > 0]
         if alive:
             used = matrix[:, alive]
-            scale = np.sqrt(np.asarray(weight, dtype=float))
-            xtwx = (used * scale[:, None]).T @ (used * scale[:, None])
-            xtwy = (used * scale[:, None]).T @ (np.asarray(target, dtype=float) * scale)
-            fitted = np.linalg.lstsq(xtwx, xtwy, rcond=1e-8)[0]
-            covariance = np.linalg.pinv(xtwx, rcond=1e-8)
-            for cursor, index in enumerate(alive):
-                beta[index] = fitted[cursor]
-                se_hat[index] = float(np.sqrt(max(covariance[cursor, cursor], 0.0)))
+            named = _named_columns(used)
+            free = np.flatnonzero(named)
+            if free.size:
+                scale = np.sqrt(np.asarray(weight, dtype=float))
+                fitted, uncertainty = nonnegative_least_squares(
+                    used[:, free] * scale[:, None],
+                    np.asarray(target, dtype=float) * scale,
+                )
+                for cursor, column in enumerate(free):
+                    beta[alive[column]] = fitted[cursor]
+                    se_hat[alive[column]] = uncertainty[cursor]
     return pd.DataFrame({"channel": channels, "coef": beta, "std_err": se_hat})
+
+
+def _named_columns(matrix: np.ndarray) -> np.ndarray:
+    """True for a channel whose slope the cell equations fix on their own.
+
+    When there are fewer independent cells than channels, the equations leave a
+    family of splits that fit equally well. A channel is named only if it takes
+    the same value across that whole family.
+    """
+    _, singular, vt = np.linalg.svd(matrix, full_matrices=True)
+    tolerance = max(matrix.shape) * np.finfo(float).eps * (singular.max() if singular.size else 0.0)
+    rank = int((singular > max(tolerance, 1e-8 * (singular.max() if singular.size else 0.0))).sum())
+    null = vt[rank:]
+    if null.size == 0:
+        return np.ones(matrix.shape[1], dtype=bool)
+    return np.abs(null).max(axis=0) < 1e-8
 
 
 def _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay: float) -> pd.DataFrame:
@@ -320,6 +342,12 @@ def _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay:
         level = 0.0
         values = []
         for raw in group[impression_col].astype(float):
+            if np.isnan(raw):
+                # A blank day stays blank. Its carryover is not guessed, so the
+                # days after it are not lost; they just see no carryover from it.
+                level = decay * level
+                values.append(float("nan"))
+                continue
             level = raw + decay * level
             values.append(level)
         carried.append(pd.Series(values, index=group.index))
@@ -468,18 +496,12 @@ def _fit_weighted(
     se_hat = np.full(len(channels), np.nan)
     if not used.any():
         return beta, se_hat, report, tied
-    x_used = x[:, used]
-    sw = np.sqrt(w)
-    xtwx = (x_used * sw[:, None]).T @ (x_used * sw[:, None])
-    xtwy = (x_used * sw[:, None]).T @ (y * sw)
-    fitted = np.linalg.lstsq(xtwx, xtwy, rcond=1e-8)[0]
-    cov = np.linalg.pinv(xtwx, rcond=1e-8)
-    se_used = np.sqrt(np.clip(np.diag(cov), 0, None))
+    fitted, uncertainty = nonnegative_least_squares(x[:, used], y, weight=w)
     cursor = 0
     for index in np.flatnonzero(used):
         if report[index]:
             beta[index] = fitted[cursor]
-            se_hat[index] = se_used[cursor]
+            se_hat[index] = uncertainty[cursor]
         cursor += 1
     return beta, se_hat, report, tied
 
@@ -487,7 +509,7 @@ def _fit_weighted(
 def _observational_variance(obs_x, obs_y) -> float:
     if len(obs_y) <= obs_x.shape[1] + 1:
         return 1.0
-    beta, _, _, _ = np.linalg.lstsq(obs_x, obs_y, rcond=None)
+    beta, _ = nonnegative_least_squares(obs_x, obs_y)
     resid = obs_y - obs_x @ beta
     dof = max(len(obs_y) - obs_x.shape[1], 1)
     return float(max(resid @ resid / dof, 1e-8))
@@ -578,6 +600,11 @@ def _channel_table(channels, beta, se, report, tied, untested) -> pd.DataFrame:
             reason = f"{channel} was never turned off"
             coef = float("nan")
             std_err = float("nan")
+        elif report[index] and float(beta[index]) == 0.0 and not np.isfinite(se[index]):
+            status = "floored"
+            reason = f"{channel} is held at zero; a negative sales-per-impression is not allowed"
+            coef = 0.0
+            std_err = float("nan")
         elif report[index]:
             status = "separate"
             reason = ""
@@ -611,6 +638,8 @@ def _channel_table(channels, beta, se, report, tied, untested) -> pd.DataFrame:
 
 
 def _reading(status: str) -> str:
+    if status == "floored":
+        return "held at zero; a negative sales-per-impression is not allowed"
     if status == "separate":
         return "model-assisted estimate"
     if status == "unstable":

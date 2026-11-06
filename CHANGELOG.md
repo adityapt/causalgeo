@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.3 — 2026-11-06
+
+- `diagnose` reads the pretrend p-value of the primary metric. Before, it read the first metric's row.
+- The `smd` gate reports `skip` when Hedges g cannot be computed or the primary metric has no g. Before, it reported `pass`. The `pretrend` gate also reports `skip` when there is no p-value.
+- `diagnose` raises on an `adjust` value other than `"bh"` or `"none"`. `bh_q` does not change Benjamini-Hochberg adjusted p-values, and the docstring now says so.
+- `contingency_table` and `rate_two_by_two` return a missing p-value with a warning when a row or column is empty. Before, they raised a raw scipy error.
+- `estimate_sc` warns that its interval uses the pre-test residual spread only and is too narrow for inference.
+- `design_concurrent_test` and `design_from_assignment` refuse an assignment with no control markets or an empty test cell. `design_from_assignment` also refuses a bundle channel that is not in the channel list.
+- `estimate_identified` names a designed cell that has no markets in the metrics instead of failing with a `KeyError`.
+- Geometric adstock keeps the days after a blank impression. Before, one blank turned every later day for that market and channel into a blank.
+- `experiment_only_split` returns a blank for a channel the cell equations cannot separate. Before, it returned an arbitrary minimum-norm split with a standard error.
+- The balance table skips the variance ratio when either arm has fewer than two markets.
+- Channel slopes are sales per impression and stay at or above zero. A slope that would be negative is held at zero, and its usual standard error is left blank. The bundle lift is unchanged and can still be negative.
+
 ## 0.2.2 — 2026-10-29
 
 - `examples/public_allocation_benchmark.py` scores the allocation on Google's public Meridian geo panel.

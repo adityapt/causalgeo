@@ -207,11 +207,11 @@ def refused_split(raw: pd.DataFrame) -> pd.DataFrame:
     x = np.vstack(x_rows)
     y = np.concatenate(y_rows)
     w = np.concatenate(w_rows)
-    sw = np.sqrt(w)
-    xtwx = (x * sw[:, None]).T @ (x * sw[:, None])
-    xtwy = (x * sw[:, None]).T @ (y * sw)
-    fitted = float(np.linalg.lstsq(xtwx, xtwy, rcond=1e-8)[0][0])
-    dropped_se = float(np.sqrt(np.linalg.pinv(xtwx, rcond=1e-8)[0, 0]))
+    from causalgeo.nonnegative import nonnegative_least_squares
+
+    fitted_coef, fitted_se = nonnegative_least_squares(x, y, weight=w)
+    fitted = float(fitted_coef[0])
+    dropped_se = float(fitted_se[0])
     return pd.DataFrame(
         [
             {

@@ -14,6 +14,8 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
+from causalgeo.nonnegative import nonnegative_gaussian_mode
+
 
 @dataclass(frozen=True)
 class BayesianAllocation:
@@ -73,9 +75,22 @@ def bayesian_channel_allocation(
         posterior_covariance_array + posterior_covariance_array.T
     ) / 2
 
+    posterior, posterior_standard_error, posterior_covariance_array = nonnegative_gaussian_mode(
+        posterior,
+        posterior_covariance_array,
+    )
     prior_variance = np.diag(covariance_array)
-    posterior_variance = np.clip(np.diag(posterior_covariance_array), 0, None)
-    posterior_standard_error = np.sqrt(posterior_variance)
+    posterior_variance = posterior_standard_error**2
+    held = ~np.isfinite(posterior_standard_error)
+    reading = np.full(
+        len(channels),
+        "Bayesian model-assisted allocation; not a channel-level experimental estimate",
+        dtype=object,
+    )
+    reading[held] = (
+        "held at zero; a negative sales-per-impression is not allowed. "
+        "Bayesian model-assisted allocation; not a channel-level experimental estimate"
+    )
     channel_table = pd.DataFrame(
         {
             "channel": channels,
@@ -87,7 +102,7 @@ def bayesian_channel_allocation(
             "ci_upper": posterior + 1.96 * posterior_standard_error,
             "posterior_update": posterior - prior,
             "variance_reduction": 1 - posterior_variance / prior_variance,
-            "reading": "Bayesian model-assisted allocation; not a channel-level experimental estimate",
+            "reading": reading,
         }
     )
     bundle_table = effects.copy()

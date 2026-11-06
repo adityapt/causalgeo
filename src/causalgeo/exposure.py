@@ -196,6 +196,7 @@ def _pre_slopes(
     controls: list[str],
 ) -> dict[str, float]:
     """Value still-on shifts at the joint pre-test slope, not a one-channel slope."""
+    from causalgeo.nonnegative import nonnegative_least_squares
     from causalgeo.panel_ols import _twoway_demean
 
     slopes = {channel: 0.0 for channel in channels}
@@ -211,7 +212,7 @@ def _pre_slopes(
     alive = [index for index in range(len(columns)) if float(np.std(x[:, index])) > 1e-8]
     if not alive:
         return slopes
-    fitted = np.linalg.lstsq(x[:, alive], y, rcond=1e-8)[0]
+    fitted, _ = nonnegative_least_squares(x[:, alive], y)
     found = {columns[index]: float(coef) for index, coef in zip(alive, fitted)}
     for channel in channels:
         slopes[channel] = found.get(channel, 0.0)

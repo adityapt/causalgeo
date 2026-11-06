@@ -109,6 +109,10 @@ def _cell_panel(
     test_cells = [cell for cell in sorted(panel["cell"].unique()) if cell != "control"]
     if not test_cells:
         raise ValueError("the design has no test markets")
+    designed = {str(cell) for cell in design.schedule["cell"]}
+    absent = sorted(designed - {str(cell) for cell in test_cells})
+    if absent:
+        raise ValueError(f"no markets in the metrics belong to cells {absent}")
     did_cols = []
     for cell in test_cells:
         column = f"did_cell_{cell}"
