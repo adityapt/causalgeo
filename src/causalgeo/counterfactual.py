@@ -17,7 +17,7 @@ import statsmodels.api as sm
 from scipy import stats
 from scipy.optimize import minimize
 
-from causalgeo.estimate import LiftReport, _incremental_spend
+from causalgeo.estimate import LiftReport, _incremental_spend, _percent_lift
 
 
 def _hac_lags(n: int) -> int:
@@ -42,6 +42,40 @@ def _newey_west_lrv(resid: np.ndarray, maxlags: int) -> float:
         weight = 1.0 - lag / (l_use + 1)
         lrv += 2.0 * weight * gamma
     return max(lrv, 0.0)
+
+
+def _geos_in_both_periods(
+    panel: pd.DataFrame, location: str, conversions: Optional[str] = None
+) -> pd.DataFrame:
+    """Drop a geo that is missing the pretest or the test period.
+
+    A geo counts as present in a period only if it has a recorded outcome there.
+    A row whose outcome is blank does not count.
+
+    The daily treated mean averages whichever geos have a row that day. A
+    treated geo that shows up only after the start changes the composition of
+    that mean, and the lift absorbs the difference in geo scale.
+    """
+    names = panel[location].astype(str)
+    recorded = panel[conversions].notna() if conversions is not None else pd.Series(True, index=panel.index)
+    pre = set(names.loc[(panel["is_post"] == 0) & recorded])
+    post = set(names.loc[(panel["is_post"] == 1) & recorded])
+    keep = pre & post
+    dropped = sorted(set(names) - keep)
+    if dropped:
+        warnings.warn(
+            "time-based regression dropped geos with no pretest or no test period, "
+            "so the daily mean does not change composition at the start: "
+            + ", ".join(dropped),
+            UserWarning,
+            stacklevel=2,
+        )
+    kept = panel.loc[names.isin(keep)].copy()
+    if kept.empty or kept["is_treatment"].nunique() < 2:
+        raise ValueError(
+            "TBR needs treatment and control geos that appear both before and after the start"
+        )
+    return kept
 
 
 def _daily_means(
@@ -83,9 +117,7 @@ def _finish(
         tcrit = float(stats.t.ppf(0.975, df)) if df > 1 else 1.96
         pval = float(2 * stats.t.sf(abs(att / se), df))
         lo, hi = att - tcrit * se, att + tcrit * se
-    ctrl_post = panel.loc[(panel["is_treatment"] == 0) & (panel["is_post"] == 1), conversions]
-    base = float(ctrl_post.mean()) if len(ctrl_post) else math.nan
-    pct = att / base if base and not math.isnan(base) else math.nan
+    pct = _percent_lift(panel, conversions, att)
     spend_delta = _incremental_spend(panel, spend_col)
     icpd = None
     if spend_delta is not None and abs(spend_delta) > 1e-12:
@@ -132,8 +164,16 @@ def estimate_tbr(
     method = se.strip().lower()
     if method not in {"hac", "iid"}:
         raise ValueError("se must be 'hac' or 'iid'")
+    panel = _geos_in_both_periods(panel, location, conversions)
     series = _daily_means(panel, conversions, date)
     pre = series.loc[series["is_post"] == 0]
+    if len(pre) < 20:
+        warnings.warn(
+            f"the pretest has {len(pre)} days; the interval can be too narrow when "
+            "outcomes are serially correlated",
+            UserWarning,
+            stacklevel=2,
+        )
     post = series.loc[series["is_post"] == 1]
     if len(pre) < 5:
         raise ValueError("TBR needs at least 5 pretest dates")
@@ -191,24 +231,53 @@ def estimate_tbr(
 
 
 def _simplex_weights(donors: np.ndarray, treated: np.ndarray) -> np.ndarray:
+    """Nonnegative weights that sum to one and match the treated pre-period.
+
+    The donor matrix is divided by the treated series' scale before SLSQP.
+    On the raw scale the loss is large, the solver stops at the equal-weight
+    start, and it still reports success.
+    """
     n_donors = donors.shape[1]
     if n_donors == 1:
         return np.array([1.0])
 
+    scale = float(np.std(treated))
+    if not np.isfinite(scale) or scale < 1e-12:
+        scale = 1.0
+    target = np.asarray(treated, dtype=float) / scale
+    matrix = np.asarray(donors, dtype=float) / scale
+
     def loss(w: np.ndarray) -> float:
-        err = treated - donors @ w
+        err = target - matrix @ w
         return float(err @ err)
+
+    def grad(w: np.ndarray) -> np.ndarray:
+        err = target - matrix @ w
+        return -2.0 * (matrix.T @ err)
 
     w0 = np.ones(n_donors) / n_donors
     result = minimize(
         loss,
         w0,
+        jac=grad,
         bounds=[(0.0, 1.0)] * n_donors,
-        constraints={"type": "eq", "fun": lambda w: float(np.sum(w) - 1.0)},
+        constraints={
+            "type": "eq",
+            "fun": lambda w: float(np.sum(w) - 1.0),
+            "jac": lambda w: np.ones(n_donors),
+        },
         method="SLSQP",
-        options={"maxiter": 500, "ftol": 1e-12},
+        options={"maxiter": 500, "ftol": 1e-14},
     )
-    w = np.clip(result.x if result.success else w0, 0.0, 1.0)
+    w = np.clip(result.x, 0.0, 1.0)
+    if (not result.success) or loss(w) > loss(w0) + 1e-10:
+        warnings.warn(
+            "the synthetic-control fit did not improve on equal donor weights, "
+            "so equal weights were used",
+            UserWarning,
+            stacklevel=3,
+        )
+        w = w0
     s = float(w.sum())
     return w / s if s > 0 else w0
 

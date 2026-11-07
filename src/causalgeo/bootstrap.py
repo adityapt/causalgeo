@@ -25,7 +25,11 @@ def bootstrap_channel_intervals(
     geo_col: str = "geo",
     **kwargs,
 ) -> pd.DataFrame:
-    """Percentile intervals from refitting the full channel pipeline."""
+    """Percentile intervals from refitting the full channel pipeline.
+
+    The stability check is always switched off inside the bootstrap, whatever
+    ``check_stability`` is passed, because it would refit every draw several times.
+    """
     if n_boot < 2:
         raise ValueError("n_boot must be at least 2")
     kwargs["check_stability"] = False
@@ -56,7 +60,7 @@ def bootstrap_channel_intervals(
     rows = []
     reported = point.channels.set_index("channel")
     for channel, group in stacked.groupby("channel", sort=False):
-        values = group.loc[group["status"].isin(["separate", "unstable"]), "coef"].dropna()
+        values = _interval_coefficients(group)
         coef = reported.loc[channel, "coef"]
         rows.append(
             {
@@ -69,6 +73,17 @@ def bootstrap_channel_intervals(
             }
         )
     return pd.DataFrame(rows)
+
+
+def _interval_coefficients(draws: pd.DataFrame) -> pd.Series:
+    """Slopes that enter the percentile interval.
+
+    A floored slope is a reported zero. Dropping those draws keeps only the
+    positive ones, so a channel whose slope is zero can get an interval that
+    sits entirely above zero.
+    """
+    kept = draws.loc[draws["status"].isin(("separate", "unstable", "floored")), "coef"]
+    return kept.dropna()
 
 
 def _resample(design: ConcurrentDesign, rng: np.random.Generator, draw: int, geo_col: str) -> pd.DataFrame:

@@ -84,7 +84,7 @@ def _fit_twoway_clustered(
     if panel.empty:
         raise ValueError("Panel is empty")
 
-    work = panel[[outcome_col, entity_col, time_col, *treatment_cols]].dropna()
+    work = panel[[outcome_col, entity_col, time_col, *treatment_cols]].dropna().reset_index(drop=True)
     if work[entity_col].nunique() < 2:
         raise ValueError("Need at least two entities (DMAs/cells) for two-way FE")
     if work[time_col].nunique() < 2:
@@ -177,7 +177,7 @@ def run_panel_ols_cell_fe(
         raise ValueError(f"Panel is missing cell column {cell_col!r}")
     treatment_cols = _as_list(treatment_col)
     formula = f"{outcome_col} ~ {' + '.join(treatment_cols)} + C({cell_col}) + C({date_col})"
-    work = panel[[outcome_col, dma_col, cell_col, date_col, *treatment_cols]].dropna()
+    work = panel[[outcome_col, dma_col, cell_col, date_col, *treatment_cols]].dropna().reset_index(drop=True)
     if work.empty:
         raise ValueError("Panel is empty")
     demeaned = _twoway_demean(work, cell_col, date_col, [outcome_col, *treatment_cols])

@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from causalgeo.design import ConcurrentDesign
+from causalgeo.panel import require_unique_rows
 from causalgeo.nonnegative import nonnegative_least_squares
 from causalgeo.exposure import adjust_for_exposure, warn_if_impressions_missing, _sum_or_missing
 from causalgeo.identified import IdentifiedEstimate, estimate_identified
@@ -360,8 +361,19 @@ def _named_columns(matrix: np.ndarray) -> np.ndarray:
     return np.abs(null).max(axis=0) < 1e-8
 
 
+def _period_steps(dates: pd.Series) -> list[float]:
+    """Periods since the previous row, so a missing day weakens the carryover."""
+    days = pd.to_datetime(dates).to_numpy("datetime64[D]").astype("int64")
+    if len(days) < 2:
+        return [1.0] * len(days)
+    gaps = np.diff(days)
+    spacing = float(np.median(gaps)) or 1.0
+    return [1.0] + [max(float(gap) / spacing, 1.0) for gap in gaps]
+
+
 def _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay: float) -> pd.DataFrame:
-    frame = impressions[[geo_col, date_col, channel_col, impression_col]].copy()
+    require_unique_rows(impressions, [geo_col, date_col, channel_col], "impressions")
+    frame = impressions[[geo_col, date_col, channel_col, impression_col]].copy().reset_index(drop=True)
     frame[date_col] = pd.to_datetime(frame[date_col])
     frame = frame.sort_values([geo_col, channel_col, date_col])
     if decay == 0:
@@ -371,14 +383,15 @@ def _adstock(impressions, geo_col, date_col, channel_col, impression_col, decay:
     for _, group in frame.groupby([geo_col, channel_col], sort=False):
         level = 0.0
         values = []
-        for raw in group[impression_col].astype(float):
+        steps = _period_steps(group[date_col])
+        for raw, gap in zip(group[impression_col].astype(float), steps):
             if np.isnan(raw):
                 # A blank day stays blank. Its carryover is not guessed, so the
                 # days after it are not lost; they just see no carryover from it.
-                level = decay * level
+                level = decay**gap * level
                 values.append(float("nan"))
                 continue
-            level = raw + decay * level
+            level = raw + decay**gap * level
             values.append(level)
         carried.append(pd.Series(values, index=group.index))
     frame["exposure"] = pd.concat(carried).sort_index()

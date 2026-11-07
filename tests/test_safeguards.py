@@ -10,6 +10,7 @@ from causalgeo import bootstrap_channel_intervals, compare_calibration, design_f
 from causalgeo.calibrated import disentangle
 from causalgeo.design import ConcurrentDesign, design_concurrent_test
 from causalgeo.exposure import _pre_slopes
+from causalgeo.bootstrap import _interval_coefficients
 from causalgeo.identified import estimate_identified
 
 
@@ -214,6 +215,18 @@ def test_calibration_pulls_the_bundle_gap_below_the_observational_fit():
         outcomes, impressions, identified, design, "2025-01-21", "sales"
     )
     assert compared["calibrated_bundle_gap"].iloc[0] <= compared["observational_bundle_gap"].iloc[0]
+
+
+def test_bootstrap_interval_keeps_floored_zeros():
+    draws = pd.DataFrame(
+        {
+            "status": ["separate", "floored", "floored", "not separable"],
+            "coef": [1.75e-4, 0.0, 0.0, np.nan],
+        }
+    )
+    values = _interval_coefficients(draws)
+    assert set(values) == {1.75e-4, 0.0}
+    assert np.quantile(values, 0.025) == 0.0
 
 
 def test_bootstrap_intervals_refit_whole_market_histories():

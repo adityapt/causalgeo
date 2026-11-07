@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from causalgeo.design import ConcurrentDesign
+from causalgeo.panel import require_unique_rows
 
 
 READING = (
@@ -46,6 +47,9 @@ def anchored_channel_allocation(
     """
     effects = _effects(bundle_effects)
     doses = _doses(dose)
+    extra_cells = sorted(set(doses["cell"]) - set(effects.index))
+    if extra_cells:
+        raise ValueError(f"dose has cells with no bundle effect: {extra_cells}")
     names = sorted(set(doses["channel"]))
     point = _point_potency(names, potency)
     bounds = _bounds(names, point, potency_bounds)
@@ -257,10 +261,14 @@ def _point_potency(
     unknown = set(map(str, potency)) - set(channels)
     if unknown:
         raise ValueError(f"potency has channels without a dose: {sorted(unknown)}")
+    seen: set[str] = set()
     for channel, value in potency.items():
+        if str(channel) in seen:
+            raise ValueError(f"potency lists channel {str(channel)!r} more than once")
+        seen.add(str(channel))
         number = float(value)
         if not np.isfinite(number) or number < 0:
-            raise ValueError("potency must be positive")
+            raise ValueError("potency must be a finite number, positive or zero")
         values[str(channel)] = number
     return values
 
@@ -356,6 +364,7 @@ def _exposure_frame(
     missing = [column for column in columns if column not in impressions.columns]
     if missing:
         raise ValueError(f"impressions are missing {missing}")
+    require_unique_rows(impressions, [geo_col, date_col, channel_col], "impressions")
     frame = impressions[columns].copy()
     frame[date_col] = pd.to_datetime(frame[date_col])
     frame[channel_col] = frame[channel_col].astype(str)
@@ -427,6 +436,16 @@ def _base_exposure(
     return base
 
 
+def _period_steps(dates: pd.Series) -> list[float]:
+    """Periods since the previous row, so a missing day weakens the carryover."""
+    days = pd.to_datetime(dates).to_numpy("datetime64[D]").astype("int64")
+    if len(days) < 2:
+        return [1.0] * len(days)
+    gaps = np.diff(days)
+    spacing = float(np.median(gaps)) or 1.0
+    return [1.0] + [max(float(gap) / spacing, 1.0) for gap in gaps]
+
+
 def _adstock(
     frame: pd.DataFrame,
     geo_col: str,
@@ -434,7 +453,7 @@ def _adstock(
     channel_col: str,
     decay: float,
 ) -> pd.DataFrame:
-    ordered = frame.sort_values([geo_col, channel_col, date_col]).copy()
+    ordered = frame.reset_index(drop=True).sort_values([geo_col, channel_col, date_col]).copy()
     if decay == 0:
         ordered["carried"] = ordered["base"].astype(float)
         return ordered
@@ -442,8 +461,9 @@ def _adstock(
     for _, group in ordered.groupby([geo_col, channel_col], sort=False):
         level = 0.0
         values = []
-        for raw in group["base"].astype(float):
-            level = raw + decay * level
+        steps = _period_steps(group[date_col])
+        for raw, gap in zip(group["base"].astype(float), steps):
+            level = raw + decay**gap * level
             values.append(level)
         carried.append(pd.Series(values, index=group.index))
     ordered["carried"] = pd.concat(carried).sort_index()

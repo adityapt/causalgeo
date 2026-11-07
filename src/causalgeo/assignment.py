@@ -23,11 +23,37 @@ _TREATMENT_ROLES = frozenset(
         "heavy-up",
     }
 )
+# A role of "holdout" is read as a test market, as in a go-dark holdout. A
+# control group held out of the test must be labeled "control".
 _CONTROL_ROLES = frozenset({"control", "bau", "business_as_usual", "donor"})
 
 
 def _norm_role(value: object) -> str:
     return str(value).strip().lower().replace(" ", "_")
+
+
+def _location_ids(values) -> list[str]:
+    """String ids, refusing blanks and a number that collides with a string."""
+    labels: list[str] = []
+    kinds: dict[str, str] = {}
+    for value in values:
+        missing = value is None or (not isinstance(value, str) and pd.isna(value))
+        if missing:
+            raise ValueError("assignment location has a missing id")
+        if isinstance(value, str):
+            text = value.strip()
+            if text == "" or text.lower() == "nan":
+                raise ValueError("assignment location has a missing id")
+            kind = "str"
+        else:
+            text = str(value).strip()
+            kind = "number"
+        previous = kinds.get(text)
+        if previous is not None and previous != kind:
+            raise ValueError(f"location id {text!r} appears as both a number and a string")
+        kinds[text] = kind
+        labels.append(text)
+    return labels
 
 
 @dataclass(frozen=True)
@@ -147,7 +173,7 @@ class AssignmentMap:
             if work.empty:
                 raise EmptyAssignmentError(f"No assignment rows for cell {cell!r}")
         work = work[[location, role]].copy()
-        work[location] = work[location].astype(str)
+        work[location] = _location_ids(work[location].tolist())
         work["_role"] = work[role].map(_norm_role)
         treat = set()
         ctrl = set()

@@ -99,10 +99,15 @@ def diagnose(
 
     ``adjust`` is ``"bh"`` or ``"none"``. Benjamini-Hochberg adjusted p-values do
     not depend on ``bh_q``, so that argument does not change the output and is
-    kept only so existing calls still work.
+    kept only so existing calls still work. ``counterfactual`` chooses the
+    placebo measurement and must be ``tbr``, ``sc``, ``sdid``, or ``twfe``.
+    Metrics with a role other than ``outcome`` stay out of that adjustment.
     """
     if isinstance(intervention, str):
         intervention = Intervention(intervention.lower().replace("-", "_"))
+    method = str(counterfactual).strip().lower()
+    if method not in {"tbr", "sc", "sdid", "twfe"}:
+        raise ValueError("counterfactual must be one of tbr, sc, sdid, twfe")
     if metrics is None:
         metrics = [MetricSpec(experiment.conversions, kind="continuous", primary=True)]
     metrics = list(metrics)
@@ -192,6 +197,7 @@ def diagnose(
 
     primary_g: Optional[float] = None
     for spec in metrics:
+        in_family = spec.role == "outcome"
         if spec.kind == "categorical":
             cat_src = experiment.data.copy()
             cat_src[location] = cat_src[location].astype(str)
@@ -211,16 +217,17 @@ def diagnose(
                 cat_pre, "arm", spec.categories, spec.counts
             )
             contingency[spec.name] = table
-            p_rows.append(
-                {
-                    "metric": spec.name,
-                    "test": cstats["method"],
-                    "window": "pretest",
-                    "estimand": "association_not_att",
-                    "p_raw": cstats["p_raw"],
-                    "stat": cstats["chi2"],
-                }
-            )
+            if in_family:
+                p_rows.append(
+                    {
+                        "metric": spec.name,
+                        "test": cstats["method"],
+                        "window": "pretest",
+                        "estimand": "association_not_att",
+                        "p_raw": cstats["p_raw"],
+                        "stat": cstats["chi2"],
+                    }
+                )
             continue
 
         col = spec.value_column
@@ -239,16 +246,17 @@ def diagnose(
             n_cc = float(g.loc[g["is_treatment"] == 0, spec.trials].sum())
             table, cstats = rate_two_by_two(s_t, n_tt, s_c, n_cc)
             contingency[spec.name] = table
-            p_rows.append(
-                {
-                    "metric": spec.name,
-                    "test": cstats["method"],
-                    "window": "pretest",
-                    "estimand": "association_not_att",
-                    "p_raw": cstats["p_raw"],
-                    "stat": cstats["chi2"],
-                }
-            )
+            if in_family:
+                p_rows.append(
+                    {
+                        "metric": spec.name,
+                        "test": cstats["method"],
+                        "window": "pretest",
+                        "estimand": "association_not_att",
+                        "p_raw": cstats["p_raw"],
+                        "stat": cstats["chi2"],
+                    }
+                )
         else:
             if col not in pre.columns:
                 raise ValueError(f"Metric column {col!r} not in panel")
@@ -259,8 +267,14 @@ def diagnose(
             primary_g = g_hat
         control_var = float(np.nanvar(c, ddof=1)) if len(t) > 1 and len(c) > 1 else float("nan")
         tests = welch_mannwhitney(t, c)
-        rho = _spearman_series(pre, col if spec.kind != "rate" else spec.successes, date)
-        trend = _pretrend(pre, col if spec.kind != "rate" else spec.successes, location, date)
+        series = pre
+        series_col = col
+        if spec.kind == "rate":
+            series = pre.copy()
+            series_col = "_rate"
+            series[series_col] = series[spec.successes] / series[spec.trials].replace(0, np.nan)
+        rho = _spearman_series(series, series_col, date)
+        trend = _pretrend(series, series_col, location, date)
         balance_rows.append(
             {
                 "metric": spec.name,
@@ -279,27 +293,28 @@ def diagnose(
             }
         )
         pretest_rows.append({"metric": spec.name, **trend, "hedges_g": g_hat})
-        for test_name, pval in tests.items():
+        if in_family:
+            for test_name, pval in tests.items():
+                p_rows.append(
+                    {
+                        "metric": spec.name,
+                        "test": test_name.replace("_p", ""),
+                        "window": "pretest",
+                        "estimand": "balance_not_att",
+                        "p_raw": pval,
+                        "stat": float("nan"),
+                    }
+                )
             p_rows.append(
                 {
                     "metric": spec.name,
-                    "test": test_name.replace("_p", ""),
+                    "test": "pretrend_interaction",
                     "window": "pretest",
-                    "estimand": "balance_not_att",
-                    "p_raw": pval,
-                    "stat": float("nan"),
+                    "estimand": "identification",
+                    "p_raw": trend["pretrend_p"],
+                    "stat": trend["pretrend_coef"],
                 }
             )
-        p_rows.append(
-            {
-                "metric": spec.name,
-                "test": "pretrend_interaction",
-                "window": "pretest",
-                "estimand": "identification",
-                "p_raw": trend["pretrend_p"],
-                "stat": trend["pretrend_coef"],
-            }
-        )
         if spec is primary and abs(g_hat) > 0.25 and np.isfinite(g_hat):
             gates.append(
                 {
@@ -383,7 +398,7 @@ def diagnose(
             spend=experiment.spend,
         )
         try:
-            placebo = placebo_exp.analyze(intervention, counterfactual="tbr")
+            placebo = placebo_exp.analyze(intervention, counterfactual=method)
             covers = placebo.ci_lower <= 0 <= placebo.ci_upper
             p_rows.append(
                 {
@@ -401,14 +416,14 @@ def diagnose(
                     {
                         "check": "placebo",
                         "status": "warn",
-                        "detail": f"placebo TBR CI ({placebo.ci_lower:.3g}, {placebo.ci_upper:.3g}) excludes 0",
+                        "detail": f"placebo {method} CI ({placebo.ci_lower:.3g}, {placebo.ci_upper:.3g}) excludes 0",
                     }
                 )
                 warnings.append("placebo_excludes_zero")
         except Exception as exc:
             warnings.append(f"placebo_failed: {exc}")
     if placebo_ok and not any(g["check"] == "placebo" for g in gates):
-        gates.append({"check": "placebo", "status": "pass", "detail": "placebo TBR CI covers 0"})
+        gates.append({"check": "placebo", "status": "pass", "detail": f"placebo {method} CI covers 0"})
 
     twfe = estimate_att(
         panel, conversions=outcome_col, location=location, date=date, spend_col=spend_col

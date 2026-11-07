@@ -158,7 +158,7 @@ python examples/prop99_measure.py
 python examples/prop99_grid_identification.py
 ```
 
-`public_allocation_benchmark.py` uses Google's public Meridian file `geo_all_channels.csv`. The file supplies the impression paths. Sales are constructed from known slopes, because the file has no channel-level holdout result. `meridian_conversions.py` runs the same split on Meridian's conversions column. That run has no known channel responses. It only shows the software on that file.
+`public_allocation_benchmark.py` uses Google's public Meridian file `geo_all_channels.csv`. That copy is Apache 2.0, not MIT. See `paper/data/README.md`. The file supplies the impression paths. Sales are constructed from known slopes, because the file has no channel-level holdout result. `meridian_conversions.py` runs the same split on Meridian's conversions column. That run has no known channel responses. It only shows the software on that file.
 
 `prop99_measure.py` reproduces the published Proposition 99 result, about −15.6 packs per capita. `prop99_grid_identification.py` shows a design that can separate two policies, and the same design after both policies are collapsed into one indicator.
 
@@ -236,7 +236,7 @@ causalgeo/
 
 ## Development
 
-Python 3.10 or newer. Runtime dependencies are pandas, numpy, scipy, and statsmodels. The manuscript figures also use matplotlib.
+Python 3.10 or newer. Runtime dependencies are pandas, numpy, scipy 1.11 or newer, and statsmodels. The manuscript figures also use matplotlib.
 
 ```bash
 pip install -e ".[dev,paper]"

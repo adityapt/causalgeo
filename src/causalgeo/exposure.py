@@ -16,6 +16,7 @@ import pandas as pd
 
 from causalgeo.design import ConcurrentDesign
 from causalgeo.identified import IdentifiedEstimate
+from causalgeo.panel import require_unique_rows
 from causalgeo.panel_ols import run_panel_ols_did
 
 
@@ -70,8 +71,8 @@ def adjust_for_exposure(
         covariates = check.loc[(check["cell"] == cell) & check["adjust"], "channel"].tolist()
         use = panel.loc[panel["cell"].isin([cell, "control"])].copy()
         use["dmacode"] = use[geo_col]
-        use["did"] = ((use["cell"] == cell) & (use["date"] >= start)).astype(float)
-        fitted = run_panel_ols_did(use, outcome, ["did", *covariates])
+        use["did"] = ((use["cell"] == cell) & (use[date_col] >= start)).astype(float)
+        fitted = run_panel_ols_did(use, outcome, ["did", *covariates], date_col=date_col)
         row = fitted.summary_frame().loc["did"]
         cells.loc[cells["cell"] == cell, ["coef", "std_err", "p_value", "ci_lower", "ci_upper"]] = [
             float(row["coef"]),
@@ -105,7 +106,7 @@ def _exposure_check(
     bundles = _bundles(design)
     panel = _panel(outcomes, impressions, design, outcome, geo_col, date_col, channel_col, impression_col)
     start = pd.Timestamp(treatment_start)
-    pre = panel["date"] < start
+    pre = panel[date_col] < start
     effects = identified.cells.set_index("cell")["coef"]
     media_columns = [
         channel
@@ -118,7 +119,7 @@ def _exposure_check(
         dark_channels = set(label.split("+")) if label else set()
         still_on = [channel for channel in media_columns if channel not in dark_channels]
         for channel in still_on:
-            shift = _impression_shift(panel, channel, cell, start)
+            shift = _impression_shift(panel, channel, cell, start, date_col)
             sales_shift = slopes[channel] * shift
             bundle_effect = float(effects[cell]) if cell in effects.index else float("nan")
             outcome_scale = float(panel.loc[pre, outcome].std(ddof=1))
@@ -146,6 +147,7 @@ def _bundles(design: ConcurrentDesign) -> dict[str, str]:
 
 
 def _panel(outcomes, impressions, design, outcome, geo_col, date_col, channel_col, impression_col) -> pd.DataFrame:
+    require_unique_rows(impressions, [geo_col, date_col, channel_col], "impressions")
     wide = impressions.pivot_table(
         index=[geo_col, date_col],
         columns=channel_col,
@@ -178,10 +180,12 @@ def warn_if_impressions_missing(impressions: pd.DataFrame, impression_col: str) 
         )
 
 
-def _impression_shift(panel: pd.DataFrame, channel: str, cell: str, start: pd.Timestamp) -> float:
+def _impression_shift(
+    panel: pd.DataFrame, channel: str, cell: str, start: pd.Timestamp, date_col: str
+) -> float:
     def mean(group: str, post: bool) -> float:
         mask = panel["cell"] == group
-        mask = mask & (panel["date"] >= start if post else panel["date"] < start)
+        mask = mask & (panel[date_col] >= start if post else panel[date_col] < start)
         return float(panel.loc[mask, channel].mean())
 
     return (mean(cell, True) - mean(cell, False)) - (mean("control", True) - mean("control", False))

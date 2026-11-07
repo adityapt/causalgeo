@@ -26,6 +26,24 @@ def _design(seed: int = 0):
     )
 
 
+def test_spare_markets_rotate_across_strata_instead_of_piling_into_cell_one():
+    geos = pd.DataFrame(
+        {"geo": [f"g{i}" for i in range(60)], "stratum": [f"s{i // 6}" for i in range(60)]}
+    )
+    design = design_concurrent_test(
+        geos,
+        channels=["A", "B", "C"],
+        bundles=[["A"], ["B"], ["C"]],
+        control_share=1 / 3,
+        seed=0,
+    )
+    counts = design.assignment.loc[design.assignment["role"] == "test", "cell"].value_counts()
+    # 10 strata, 4 test markets, 3 cells. Starting each stratum at cell 1
+    # deals 20/10/10. Rotating the spare market deals 14/13/13.
+    assert counts.max() - counts.min() <= 1
+    assert counts.sum() == 40
+
+
 def test_each_stratum_is_split_evenly_across_cells():
     design = _design()
     test = design.assignment[design.assignment["role"] == "test"]

@@ -225,7 +225,8 @@ def estimate_sdid(
     """Estimate ATT using Arkhangelsky et al. synthetic DiD.
 
     Inference uses control-only placebo assignments (Algorithm 4), which also
-    works when only one geo is treated.
+    works when only one geo is treated. The standard error does not reflect
+    noise in the treated geos, so it can be too small when they are noisy.
     """
     outcomes, n_controls, n_pre = _balanced_matrix(
         panel,

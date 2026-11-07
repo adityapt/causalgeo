@@ -30,7 +30,9 @@ def nonnegative_least_squares(
 
     A coefficient that sits at zero was not free to move below zero, so its
     standard error is missing. The standard errors on the positive coefficients
-    come from the ordinary fit on those columns alone.
+    are sqrt(diag((X'WX)^-1)) on those columns. That is the standard error of a
+    weighted fit only when the weights are the inverse variances of the rows, so
+    pass weights on that scale. No residual variance is estimated here.
     """
     design = np.asarray(x, dtype=float)
     target = np.asarray(y, dtype=float)

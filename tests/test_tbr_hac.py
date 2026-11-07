@@ -11,6 +11,34 @@ from causalgeo.counterfactual import estimate_tbr
 from causalgeo.panel import build_panel
 
 
+def test_tbr_drops_a_treated_geo_that_has_no_pretest():
+    rng = np.random.default_rng(0)
+    start = datetime(2026, 1, 1)
+    dates = [start + timedelta(days=i) for i in range(40)]
+    treat_start = datetime(2026, 1, 21)
+    treat = [f"G{i}" for i in range(6)]
+    ctrl = [f"C{i}" for i in range(6)]
+    rows = []
+    for geo in treat + ctrl:
+        level = 20.0 if geo != "G0" else 80.0
+        for day in dates:
+            post = day >= treat_start
+            rows.append(
+                {
+                    "location": geo,
+                    "date": day,
+                    "conversions": level - 4.0 * (geo in treat) * post + rng.normal(0, 0.2),
+                }
+            )
+    intact = pd.DataFrame(rows)
+    broken = intact.loc[~((intact["location"] == "G0") & (intact["date"] < treat_start))]
+    assignment = AssignmentMap.from_sets(treat, ctrl)
+    full = GeoExperiment(intact, assignment, treat_start).analyze(Intervention.GO_DARK)
+    with pytest.warns(UserWarning, match="dropped geos"):
+        partial = GeoExperiment(broken, assignment, treat_start).analyze(Intervention.GO_DARK)
+    assert partial.lift == pytest.approx(full.lift, abs=0.5)
+
+
 def _ar1_panel(phi: float, seed: int = 7) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     start = datetime(2026, 1, 1)

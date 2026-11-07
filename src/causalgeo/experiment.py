@@ -74,6 +74,9 @@ class GeoExperiment:
         ``sc`` (synthetic control on the treated mean), ``sdid`` (synthetic
         difference-in-differences), or ``twfe`` (geo + date FE).
 
+        ``intervention`` does not change the estimate. It only selects the
+        dose check and the delivery gate that ``diagnose`` applies.
+
         If ``impressions`` were provided and ``use_impressions_as_dose`` is True,
         the regressor is delivered-impression dose relative to pretest (heavy-up
         / dose-response). Dose is TWFE-only.

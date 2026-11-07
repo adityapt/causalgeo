@@ -62,3 +62,10 @@ def build_panel(
         panel["_dose_ratio"] = panel["_impressions"] / panel[location].map(baseline)
         panel["did_dose"] = panel["is_post"] * (panel["_dose_ratio"] - 1.0)
     return panel.sort_values([location, date]).reset_index(drop=True)
+
+
+def require_unique_rows(frame: pd.DataFrame, keys: list[str], what: str) -> None:
+    """Refuse repeated keys instead of adding them together."""
+    if frame.duplicated(keys).any():
+        raise ValueError(f"{what} has more than one row for the same {', '.join(keys)}")
+

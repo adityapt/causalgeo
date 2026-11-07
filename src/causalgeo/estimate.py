@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Optional
 
@@ -10,13 +11,22 @@ import pandas as pd
 import statsmodels.api as sm
 
 
+def _percent_lift(panel: pd.DataFrame, conversions: str, att: float) -> float:
+    """Lift as a share of what the treated geos would have had without it."""
+    treated_post = panel.loc[(panel["is_treatment"] == 1) & (panel["is_post"] == 1), conversions]
+    if not len(treated_post):
+        return math.nan
+    base = float(treated_post.mean()) - att
+    return att / base if base and not math.isnan(base) else math.nan
+
+
 @dataclass
 class LiftReport:
     """Analysis output in GeoX / GeoLift vocabulary.
 
     ``lift`` is the ATT of the intervention on the conversion KPI (per geo-day).
-    ``percent_lift`` is lift relative to mean control conversions in the test
-    period. ``icpd`` is incremental conversions per dollar when spend is
+    ``percent_lift`` is lift relative to the treated geos' counterfactual mean
+    in the test period, which is their observed mean minus the lift. ``icpd`` is incremental conversions per dollar when spend is
     present (iROAS if ``conversions`` are revenue); its denominator is
     ``spend_delta``, the difference-in-differences of spend.
     """
@@ -97,8 +107,13 @@ def estimate_att(
     treatment_term: str = "treated",
     spend_col: Optional[str] = None,
 ) -> LiftReport:
-    """Y ~ treated + geo FE + date FE, cluster-robust SEs by geo."""
-    work = panel[[conversions, location, date, treatment_term]].dropna()
+    """Y ~ treated + geo FE + date FE, cluster-robust SEs by geo.
+
+    Intervals and p-values use a t distribution with one fewer degree of freedom
+    than there are geos. Cluster-robust inference is unreliable with few treated
+    geos, and the function warns when either arm has fewer than five.
+    """
+    work = panel[[conversions, location, date, treatment_term]].dropna().reset_index(drop=True)
     demeaned = _twoway_demean(work, location, date, [conversions, treatment_term])
     y = demeaned[conversions]
     x = demeaned[[treatment_term]]
@@ -109,19 +124,27 @@ def estimate_att(
     fitted = model.fit(
         cov_type="cluster",
         cov_kwds={"groups": work.loc[x.index, location]},
+        use_t=True,
     )
     term = treatment_term
     att = float(fitted.params[term])
     se = float(fitted.bse[term])
     pval = float(fitted.pvalues[term])
     ci = fitted.conf_int().loc[term]
-    ctrl_post = panel.loc[(panel["is_treatment"] == 0) & (panel["is_post"] == 1), conversions]
-    base = float(ctrl_post.mean()) if len(ctrl_post) else math.nan
-    pct = att / base if base and not math.isnan(base) else math.nan
+    pct = _percent_lift(panel, conversions, att)
     spend_delta = _incremental_spend(panel, spend_col)
     icpd = None
     if spend_delta is not None and abs(spend_delta) > 1e-12:
         icpd = att / spend_delta
+    n_treated = int(panel.loc[panel["is_treatment"] == 1, location].nunique())
+    n_control = int(panel.loc[panel["is_treatment"] == 0, location].nunique())
+    if n_treated < 5 or n_control < 5:
+        warnings.warn(
+            f"clustered inference with {n_treated} treated and {n_control} control geos "
+            "is unreliable and tends to reject too often",
+            UserWarning,
+            stacklevel=2,
+        )
     return LiftReport(
         lift=att,
         std_error=se,

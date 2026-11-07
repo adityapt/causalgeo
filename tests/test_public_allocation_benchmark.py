@@ -14,7 +14,6 @@ def test_public_meridian_panel_scores_the_bundle_allocation():
     result = _benchmark().run()
 
     assert result["source"].endswith("geo_all_channels.csv")
-    assert "zillow" not in result["source"].lower()
     assert result["n_geos"] == 40
     assert abs(result["reconciliation_error"]) < 1e-6
     assert result["max_abs_informed_share_error"] < 1e-8

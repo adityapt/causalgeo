@@ -49,10 +49,11 @@ def welch_mannwhitney(treat: np.ndarray, ctrl: np.ndarray) -> dict[str, float]:
     welch = stats.ttest_ind(t, c, equal_var=False)
     mw = stats.mannwhitneyu(t, c, alternative="two-sided")
     ks = stats.ks_2samp(t, c)
+    both_constant = float(np.ptp(t)) == 0.0 and float(np.ptp(c)) == 0.0
     return {
         "welch_p": float(welch.pvalue),
         "mannwhitney_p": float(mw.pvalue),
-        "ks_p": float(ks.pvalue),
+        "ks_p": float("nan") if both_constant else float(ks.pvalue),
     }
 
 
@@ -63,6 +64,11 @@ def contingency_table(
     count: str,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     """Arm × category counts; χ² or Fisher. Not an incrementality estimate."""
+    counts = frame[count]
+    if counts.isna().any():
+        raise ValueError("contingency counts have missing values")
+    if (counts < 0).any():
+        raise ValueError("contingency counts must be nonnegative")
     table = (
         frame.groupby([arm, category], as_index=False)[count]
         .sum()
@@ -70,9 +76,15 @@ def contingency_table(
         .fillna(0.0)
     )
     observed = table.to_numpy(dtype=float)
-    if observed.sum() == 0 or (observed.sum(axis=0) == 0).any() or (observed.sum(axis=1) == 0).any():
+    one_way = observed.ndim < 2 or observed.shape[0] < 2 or observed.shape[1] < 2
+    if (
+        one_way
+        or observed.sum() == 0
+        or (observed.sum(axis=0) == 0).any()
+        or (observed.sum(axis=1) == 0).any()
+    ):
         warnings.warn(
-            "a row or column of the contingency table is empty, so no test was run",
+            "a contingency table needs two groups; an empty or one-sided table was not tested",
             UserWarning,
             stacklevel=2,
         )
@@ -117,6 +129,9 @@ def rate_two_by_two(
     successes_c: float,
     trials_c: float,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
+    for label, wins, trials in (("treatment", successes_t, trials_t), ("control", successes_c, trials_c)):
+        if not (0 <= wins <= trials):
+            raise ValueError(f"{label} successes must be between 0 and trials")
     table = pd.DataFrame(
         {
             "success": [successes_t, successes_c],

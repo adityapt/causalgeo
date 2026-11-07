@@ -64,6 +64,22 @@ def _world():
     return design, pd.DataFrame(outcomes), pd.DataFrame(impressions)
 
 
+def test_exposure_accepts_a_date_column_that_is_not_named_date():
+    design, outcomes, impressions = _world()
+    outcomes = outcomes.rename(columns={"date": "week"})
+    impressions = impressions.rename(columns={"date": "week"})
+    result = disentangle(
+        design,
+        outcomes,
+        impressions,
+        outcome="sales",
+        treatment_start="2025-01-21",
+        date_col="week",
+        check_stability=False,
+    )
+    assert set(result.channels["channel"]) == {"Channel0", "Channel1", "Channel2"}
+
+
 def test_exposure_adjustment_is_reported_but_not_applied_by_default():
     design, outcomes, impressions = _world()
     plain = estimate_identified(design, outcomes, outcome="sales", treatment_start="2025-01-21")

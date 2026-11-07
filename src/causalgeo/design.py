@@ -68,6 +68,10 @@ def design_from_assignment(
     missing = [col for col in (geo_col, cell_col) if col not in assignment.columns]
     if missing:
         raise ValueError(f"assignment is missing {missing}")
+    cells_per_market = assignment.groupby(geo_col)[cell_col].nunique()
+    in_two_cells = sorted(str(market) for market in cells_per_market.index[cells_per_market > 1])
+    if in_two_cells:
+        raise ValueError(f"markets appear in more than one cell: {in_two_cells}")
     frame = assignment[[geo_col, cell_col]].drop_duplicates(geo_col).copy()
     frame[cell_col] = frame[cell_col].astype(str)
     expected = {str(index) for index in range(1, len(bundles) + 1)} | {"control"}
@@ -92,6 +96,10 @@ def _check_inputs(geos, channels, bundles, geo_col, stratum_col, control_share) 
         raise ValueError("geos is empty")
     if geos[geo_col].duplicated().any():
         raise ValueError(f"'{geo_col}' has duplicate markets")
+    if geos[geo_col].isna().any():
+        raise ValueError(f"'{geo_col}' has missing market ids")
+    if geos[stratum_col].isna().any():
+        raise ValueError(f"'{stratum_col}' has missing values")
     if not bundles:
         raise ValueError("bundles is empty; pass one channel list per cell")
     if not 0 <= control_share < 1:
@@ -124,6 +132,11 @@ def _check_cells_filled(assignment: pd.DataFrame, n_cells: int) -> None:
 def _assign_stratified(geos, geo_col, stratum_col, n_cells, control_share, seed) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     rows: list[dict] = []
+    # Carry the spare markets into the next stratum. Starting every stratum at
+    # cell 1 gives that cell every spare market (20/10/10 instead of 14/13/13).
+    # A stratum whose test count divides evenly does not move the carry, so an
+    # already even design is unchanged.
+    carry = 0
     for stratum, group in geos.groupby(stratum_col, sort=True):
         markets = group[geo_col].to_numpy().copy()
         rng.shuffle(markets)
@@ -133,15 +146,17 @@ def _assign_stratified(geos, geo_col, stratum_col, n_cells, control_share, seed)
             rows.append(
                 {geo_col: market, stratum_col: stratum, "cell": "control", "role": "control"}
             )
-        for i, market in enumerate(markets[n_control:]):
+        test_markets = markets[n_control:]
+        for i, market in enumerate(test_markets):
             rows.append(
                 {
                     geo_col: market,
                     stratum_col: stratum,
-                    "cell": str((i % n_cells) + 1),
+                    "cell": str(((i + carry) % n_cells) + 1),
                     "role": "test",
                 }
             )
+        carry = (carry + len(test_markets)) % n_cells
     out = pd.DataFrame(rows)
     return out.sort_values([stratum_col, "cell", geo_col]).reset_index(drop=True)
 

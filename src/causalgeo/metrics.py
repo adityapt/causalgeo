@@ -24,6 +24,8 @@ class MetricSpec:
     primary: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.kind, str) or not isinstance(self.role, str):
+            raise ValueError("kind and role must be strings")
         kind = self.kind.strip().lower()
         role = self.role.strip().lower()
         object.__setattr__(self, "kind", kind)
