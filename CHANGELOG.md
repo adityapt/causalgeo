@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 — 2026-11-07
 
 - Repeated impression rows for the same market, day, and channel raise an error instead of being added together.
 - A rate's pretrend and rank correlation use the rate. Before, they used the success counts.

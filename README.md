@@ -38,10 +38,10 @@ One bundled test is one equation. Eight channels in that bundle are not eight ex
 
 ### Installation
 
-The release to install is v0.2.3. It is not on PyPI yet.
+The release to install is v0.2.4. It is not on PyPI yet.
 
 ```bash
-pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.2.3"
+pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.2.4"
 ```
 
 To work on the repository:
@@ -252,7 +252,7 @@ MIT. See [LICENSE.txt](LICENSE.txt).
 
 ## Citation
 
-The SoftwareX manuscript is not yet published. Cite v0.2.3: [10.5281/zenodo.24017880](https://doi.org/10.5281/zenodo.24017880).
+The SoftwareX manuscript is not yet published. Cite v0.2.4.
 
 The concept DOI points at the latest archive: [10.5281/zenodo.23608831](https://doi.org/10.5281/zenodo.23608831). The v0.2.0 archive remains [10.5281/zenodo.23608832](https://doi.org/10.5281/zenodo.23608832).
 
