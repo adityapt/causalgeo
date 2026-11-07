@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use causalgeo, please cite the software release below. The SoftwareX manuscript is not yet published."
 title: "causalgeo: concurrent geo holdouts for bundle lift and calibrated channel responses"
 version: "0.2.4"
-doi: 10.5281/zenodo.24017880
+doi: 10.5281/zenodo.24041239
 type: software
 authors:
   - family-names: Puttaparthi Tirumala
@@ -15,6 +15,9 @@ date-released: 2026-11-07
 url: https://github.com/adityapt/causalgeo
 repository-code: https://github.com/adityapt/causalgeo
 identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24041239
+    description: "Zenodo archive of causalgeo v0.2.4"
   - type: doi
     value: 10.5281/zenodo.24017880
     description: "Zenodo archive of causalgeo v0.2.3"
@@ -57,7 +60,7 @@ preferred-citation:
       affiliation: Independent Researcher
   version: "0.2.4"
   date-released: 2026-11-07
-  doi: 10.5281/zenodo.24017880
-  url: https://doi.org/10.5281/zenodo.24017880
+  doi: 10.5281/zenodo.24041239
+  url: https://doi.org/10.5281/zenodo.24041239
   repository-code: https://github.com/adityapt/causalgeo
   license: MIT

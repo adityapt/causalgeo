@@ -77,11 +77,11 @@ geo experiment \sep incrementality \sep holdout \sep marketing mix \sep Python
 \hline
 \textbf{Nr.} & \textbf{Code metadata description} & \textbf{Value} \\
 \hline
-C1 & Current code version & 0.2.3 \\
+C1 & Current code version & 0.2.4 \\
 \hline
-C2 & Permanent link to code/repository used for this code version & \metaurl{https://github.com/adityapt/causalgeo/releases/tag/v0.2.3} \\
+C2 & Permanent link to code/repository used for this code version & \metaurl{https://github.com/adityapt/causalgeo/releases/tag/v0.2.4} \\
 \hline
-C3 & Permanent link to Reproducible Capsule & \metaurl{https://doi.org/10.5281/zenodo.24017880} \\
+C3 & Permanent link to Reproducible Capsule & \metaurl{https://doi.org/10.5281/zenodo.24041239} \\
 \hline
 C4 & Legal Code License & MIT \\
 \hline
@@ -338,7 +338,7 @@ A confounder that tracks Channel0 and stays on during the holdout leaves that re
 
 As described in Section~\ref{sec:motivation}, GeoLift, GeoX, Robyn and PyMC-Marketing cover parts of this problem \cite{geolift,geox2026,runge2024,pymcmarketing2024}. \texttt{causalgeo} puts three things in one package: a concurrent multi-cell holdout, a report of the gap between the holdout lift and the model, and a blank result for any channel that the impressions cannot separate. California's Proposition 99 panel, a cigarette tax rather than a marketing holdout, checks the single-cell estimator. Synthetic difference-in-differences gives $-15.6$ packs per capita, matching the published figure, and a Nebraska placebo covers zero. It does not check the channel split (\texttt{examples/prop99\_measure.py}).
 
-The current release is 0.2.3. Adoption is early and this paper includes no user study. The script \texttt{paper/reproduce.py} rebuilds all five tables and four figures. A real holdout needs only market outcomes and channel impressions as inputs.
+The current release is 0.2.4. Adoption is early and this paper includes no user study. The script \texttt{paper/reproduce.py} rebuilds all five tables and four figures. A real holdout needs only market outcomes and channel impressions as inputs.
 
 \section{Conclusions}
 \label{sec:conclusions}
@@ -360,7 +360,7 @@ The author declares that he has no known competing financial interests or person
 
 \section*{Data availability}
 \begingroup\raggedright
-The impression paths are Google's public Meridian file \texttt{geo\_all\_channels.csv}, distributed under the Apache License 2.0 \cite{meridiandata}. \texttt{examples/meridian\_conversions.py} runs the same split on Meridian's conversions column. That run has no known channel incrementality and only shows the software working on that file. The archived v0.2.3 release \cite{causalgeosoftware} has the DOI \metaurl{https://doi.org/10.5281/zenodo.24017880}. In \texttt{paper/}, set \texttt{PYTHONPATH} to \texttt{../src} and run \texttt{python3.11 reproduce.py}. That rebuilds Tables~\ref{tab:cells}--\ref{tab:robustness} and the four figures, then checks them against the rounded values reported here. The \texttt{--fast} option only checks that the scripts finish. Table~\ref{tab:metadata} gives the repository links.
+The impression paths are Google's public Meridian file \texttt{geo\_all\_channels.csv}, distributed under the Apache License 2.0 \cite{meridiandata}. \texttt{examples/meridian\_conversions.py} runs the same split on Meridian's conversions column. That run has no known channel incrementality and only shows the software working on that file. The archived v0.2.4 release \cite{causalgeosoftware} has the DOI \metaurl{https://doi.org/10.5281/zenodo.24041239}. In \texttt{paper/}, set \texttt{PYTHONPATH} to \texttt{../src} and run \texttt{python3.11 reproduce.py}. That rebuilds Tables~\ref{tab:cells}--\ref{tab:robustness} and the four figures, then checks them against the rounded values reported here. The \texttt{--fast} option only checks that the scripts finish. Table~\ref{tab:metadata} gives the repository links.
 \par\endgroup
 
 \section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}

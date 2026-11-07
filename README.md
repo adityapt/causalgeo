@@ -3,7 +3,7 @@
 **Concurrent geo holdouts for bundle lift and calibrated channel responses**
 
 [![tests](https://github.com/adityapt/causalgeo/actions/workflows/check.yml/badge.svg)](https://github.com/adityapt/causalgeo/actions/workflows/check.yml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24017880.svg)](https://doi.org/10.5281/zenodo.24017880)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24041239.svg)](https://doi.org/10.5281/zenodo.24041239)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
 
@@ -252,7 +252,7 @@ MIT. See [LICENSE.txt](LICENSE.txt).
 
 ## Citation
 
-The SoftwareX manuscript is not yet published. Cite v0.2.4.
+The SoftwareX manuscript is not yet published. Cite v0.2.4: [10.5281/zenodo.24041239](https://doi.org/10.5281/zenodo.24041239).
 
 The concept DOI points at the latest archive: [10.5281/zenodo.23608831](https://doi.org/10.5281/zenodo.23608831). The v0.2.0 archive remains [10.5281/zenodo.23608832](https://doi.org/10.5281/zenodo.23608832).
 
