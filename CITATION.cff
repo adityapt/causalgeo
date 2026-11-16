@@ -49,7 +49,7 @@ abstract: |
   worth. Splitting that one total requires a sales-per-impression weight
   the user already has. The package does not calculate that weight.
   A channel response is reported when different cells separate the
-  channels. Channels whose impressions are copies stay blank.
+  channels. Channels whose impressions are perfectly correlated get no number.
 preferred-citation:
   type: software
   title: "causalgeo: concurrent geo holdouts for bundle lift and calibrated channel responses"

@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
 
-A geo holdout estimates the lift of a bundle. It does not estimate how many sales each channel inside that bundle was worth. causalgeo reports the bundle lift, uses impression paths for a model-assisted channel split when the cells can separate the channels, and leaves a channel blank when the design cannot tell the channels apart.
+A geo holdout estimates the lift of a bundle. It does not estimate how many sales each channel inside that bundle was worth. causalgeo reports the bundle lift, uses impression paths for a model-assisted channel split when the cells can separate the channels, and reports no number for a channel when the design cannot tell the channels apart.
 
 ## Key features
 
@@ -19,8 +19,8 @@ A geo holdout estimates the lift of a bundle. It does not estimate how many sale
 
 ### Channel split
 
-- **Model-assisted, and labeled as such.** Channel responses come from impression history, pulled toward the measured bundle lifts. They are not channel-level holdout estimates. A channel slope is sales per impression and is held at zero when the line would slope down. The bundle lift stays free.
-- **A channel stays blank** when the flight never turns it off, when two impression paths are copies, or when the design cannot separate it.
+- **Model-assisted, and labeled as such.** Channel responses come from impression history, calibrated toward the measured bundle lifts. They are not channel-level holdout estimates. A channel slope is sales per impression and is held at zero when the line would slope down. The bundle lift stays free.
+- **A channel gets no number** when the flight never turns it off, when two impression paths are perfectly correlated, or when the design cannot separate it.
 - **The gap stays visible.** The bundle table shows the measured lift next to the lift implied by the channel responses.
 
 ### One bundle
@@ -85,7 +85,7 @@ result = disentangle(
     treatment_start="2026-08-03",
 )
 
-result.channels   # one row per channel; blank when the design cannot separate it
+result.channels   # one row per channel; no number when the design cannot separate it
 result.bundles    # measured bundle lift next to the lift implied by the channel responses
 result.exposure   # still-on impression shift, and whether it was applied
 ```
