@@ -184,13 +184,13 @@ report.lift, report.percent_lift, report.icpd
 
 Go-dark turns existing media off. Holdback keeps a new activity at zero in control. Heavy-up adds delivery in treatment and leaves control on business as usual. A comparison of two spend arms with no business-as-usual markets raises `MissingControlError`. Cost per dollar without a spend series raises `MissingSpendError`.
 
-Use GeoLift or Meridian GeoX when you are designing a test and want market selection, power, and budget search. causalgeo analyzes an assignment you already have.
+Use GeoLift or Meridian GeoX when you want a power analysis and a search over which markets to include. causalgeo randomizes the markets you supply into a holdout and business-as-usual groups. Power analysis is not in this release. It is planned for a later one.
 
 | | GeoLift | Meridian GeoX | causalgeo |
 |---|---|---|---|
-| Starting point | Pick test markets | Search designs | Assignment you were handed |
+| Starting point | Pick test markets from a power analysis | Search designs and rank them by power | Randomize supplied markets into a holdout and business as usual |
 | Counterfactual | Synthetic control | Time-based regression | Time-based regression by default; synthetic control or clustered two-way fixed effects |
-| Channel split | No | No | Model-assisted, blank when the cells cannot separate the channels |
+| Channel split | No | No | Model-assisted, no number when the cells cannot separate the channels |
 | Language | R | Python | Python |
 
 ## Benchmarks

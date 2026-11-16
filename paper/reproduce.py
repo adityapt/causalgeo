@@ -4,8 +4,9 @@ Run from this directory:
 
     PYTHONPATH=../src python3.11 reproduce.py
 
-That rebuilds Tables 2--6 and the four figures, then checks the rounded values
-in the manuscript. The full run refits every Monte Carlo setting.
+That rebuilds the cell, response, reliability, stress, and robustness tables
+and the four figures, then checks the rounded values in the manuscript. The
+full run refits every Monte Carlo setting.
 
     PYTHONPATH=../src python3.11 reproduce.py --fast
 
@@ -233,6 +234,14 @@ def _check_tables() -> None:
     cells = pd.read_csv(OUT / "cell_coverage.csv")
     if round(float(cells["coverage"].iloc[0]), 3) != 0.918:
         raise AssertionError(f"cell coverage is {cells['coverage'].iloc[0]}, manuscript says 0.918")
+    detail = pd.read_csv(OUT / "cell_coverage_detail.csv")
+    by_run = detail.groupby("seed")["cover"].mean()
+    mcse = float(by_run.std(ddof=1) / np.sqrt(len(by_run)))
+    center = float(by_run.mean())
+    lower = round(max(0.0, center - 1.96 * mcse), 3)
+    upper = round(min(1.0, center + 1.96 * mcse), 3)
+    if (lower, upper) != (0.897, 0.940):
+        raise AssertionError(f"cell coverage interval is [{lower}, {upper}], manuscript says [0.897, 0.940]")
     refused = pd.read_csv(OUT / "refused.csv")
     reported_refused = _rounded(refused, {"per_10000": 2})
     expected_refused = pd.DataFrame(
@@ -361,7 +370,7 @@ def main(fast: bool = False) -> None:
         print("Fast check finished. Published table values were not compared.")
         return
     _check_tables()
-    print("Reproduced Tables 2-6 and the four figures.")
+    print("Reproduced the cell, response, reliability, stress, and robustness tables and the four figures.")
 
 
 if __name__ == "__main__":
