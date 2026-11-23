@@ -3,6 +3,9 @@
 **Concurrent geo holdouts for bundle lift and calibrated channel responses**
 
 [![tests](https://github.com/adityapt/causalgeo/actions/workflows/check.yml/badge.svg)](https://github.com/adityapt/causalgeo/actions/workflows/check.yml)
+[![PyPI](https://img.shields.io/pypi/v/causalgeo.svg)](https://pypi.org/project/causalgeo/)
+[![Downloads](https://static.pepy.tech/badge/causalgeo)](https://pepy.tech/project/causalgeo)
+[![Downloads/month](https://static.pepy.tech/badge/causalgeo/month)](https://pepy.tech/project/causalgeo)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24041239.svg)](https://doi.org/10.5281/zenodo.24041239)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
@@ -38,10 +41,10 @@ One bundled test is one equation. Eight channels in that bundle are not eight ex
 
 ### Installation
 
-The release to install is v0.2.4. It is not on PyPI yet.
+The current release is v0.2.4. It needs Python 3.10 or newer.
 
 ```bash
-pip install "causalgeo @ git+https://github.com/adityapt/causalgeo.git@v0.2.4"
+pip install causalgeo
 ```
 
 To work on the repository:
