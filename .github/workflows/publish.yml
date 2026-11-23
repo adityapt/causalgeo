@@ -18,7 +18,7 @@ jobs:
         run: python -m pip install --upgrade build twine
       - name: Test before building
         run: |
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev,paper]"
           python -m pytest
       - name: Build sdist and wheel
         run: python -m build
